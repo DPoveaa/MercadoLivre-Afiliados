@@ -1,0 +1,5 @@
+selenium
+undetected-chromedriver
+webdriver-manager
+schedule
+requests
