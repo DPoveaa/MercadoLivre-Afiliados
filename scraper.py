@@ -92,7 +92,12 @@ def init_driver():
     options.add_argument('--disable-blink-features=AutomationControlled')
     # NÃO USE --headless AQUI!
 
-    driver = uc.Chrome(options=options, headless=False)
+    driver = uc.Chrome(
+    options=options,
+    headless=False,
+    driver_executable_path=ChromeDriverManager().install(),
+    browser_executable_path="/usr/bin/google-chrome"  # ou "/usr/bin/chromium-browser"
+    )
     log("Navegador stealth iniciado")
     return driver
 
@@ -266,9 +271,9 @@ def get_product_details(driver, url, max_retries=3):
                     lower = full_text.lower()
 
                     if "mercado pago" in lower:
-                        label = "Com Mercado Pago"
+                        label = "*Com Mercado Pago*"
                     elif not captured_others:
-                        label = "Outros cartões"
+                        label = "*Outros cartões*"
                         # Se for "sem juros", marcar prioridade
                         if "sem juros" in lower:
                             found_others = True
@@ -299,7 +304,7 @@ def get_product_details(driver, url, max_retries=3):
                 raise
 
             installment_text = (
-                "💳 Parcelamentos\n" + "\n".join(installment_lines)
+                "💳 *Parcelamentos:*\n" + "\n".join(installment_lines)
                 if installment_lines else ""
             )
 
@@ -509,12 +514,12 @@ def should_run_bot(min_interval_hours=1):
 
 safe_check_promotions()
 # Loop principal
-schedule.every(1).hours.do(safe_check_promotions)
-print("Agendado para verificar promoções a cada 1 hora.")
+schedule.every(3).hours.do(safe_check_promotions)
+print("Agendado para verificar promoções a cada 3 hora.")
 log("Bot iniciado. Pressione Ctrl+C para parar.")
 try:
     while True:
         schedule.run_pending()
-        time.sleep(60)
+        time.sleep(10800)
 except KeyboardInterrupt:
     log("Bot encerrado pelo usuário")
