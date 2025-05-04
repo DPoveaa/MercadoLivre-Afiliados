@@ -1,9 +1,13 @@
 from datetime import datetime, timedelta
+import os
 import re
+import shlex
 from tempfile import mkdtemp
+from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
+from Telegram.tl_enviar import send_telegram_message
 import json
 from collections import deque
 from selenium.webdriver.support import expected_conditions as EC
@@ -11,22 +15,41 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from urllib.parse import urlparse, urlunparse
 from selenium.common.exceptions import NoSuchElementException
+import platform
 from selenium.common.exceptions import WebDriverException
 import undetected_chromedriver as uc
 from webdriver_manager.chrome import ChromeDriverManager
+import subprocess
 import random
 import time
 import requests
 import schedule
 import sys
 
+load_dotenv()
+
+# Configurações Telegram
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+# Cookies (como lista de dicionários)
+COOKIES = json.loads(os.getenv("ML_COOKIES"))
+
 # Configurações
-TELEGRAM_BOT_TOKEN = '7809229983:AAGBphj2suFOzCeQOjhNNEnqDeb7aihMYpE'
-TELEGRAM_CHAT_ID = '-1002388728835'  # Substitua pelo seu chat ID
-ML_AFFILIATE_LABEL = 'centraldedescontos - 61832902'
-# Configurações
-HISTORY_FILE = 'promocoes.json'
+HISTORY_FILE = 'promocoes.ml.json'
 MAX_HISTORY_SIZE = 30  # Mantém as últimas promoções
+
+# Mensagem e nome do grupo
+mensagem = "Promoção exclusiva! Confira agora!"
+grupo = "Central De Descontos"
+
+# Comando Node.js
+cmd = [
+    "node",
+    "Whatsapp/wpp_enviar.js",
+    mensagem,
+    grupo
+]
 
 def normalize_url(url):
     try:
@@ -55,25 +78,6 @@ def save_promo_history(history):
 # Variável global para armazenar promoções já enviadas
 sent_promotions = load_promo_history()
 
-# Seus cookies (mantenha apenas os essenciais)
-COOKIES = [
-    {
-        'name': 'ssid',
-        'value': 'ghy-031520-CF5Vo8lWETRIi9hxUUMNcXwaXGlrEE-__-215094442-__-1836778381683--RRR_0-RRR_0',
-        'domain': '.mercadolivre.com.br'
-    },
-    {
-        'name': 'orguseridp',
-        'value': '215094442',
-        'domain': '.mercadolivre.com.br'
-    },
-    {
-        'name': 'x-meli-session-id',
-        'value': 'armor.46cf731c3b610b5a51103c97ababe935374a33fbdc5cbde14cccb2697c9c9916d5fc0da6c4ff1fee4dfb7625006a0c6694932ba025be9c9eb9ebaea324684dc58f1bac64cc4169032c9d745553c917376d5c5da5b73976f44389e6195cb08702.b00cb4ad04be08a8e92dc83f0253fcb0',
-        'domain': '.mercadolivre.com.br'
-    }
-]
-
 def log(message):
     """Função para logging com timestamp"""
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -90,16 +94,101 @@ def init_driver():
     options.add_argument('--window-size=1920,1080')
     options.add_argument("--start-minimized")
     options.add_argument('--disable-blink-features=AutomationControlled')
-    # NÃO USE --headless AQUI!
+    
+    # Configurações específicas por sistema operacional
+    if platform.system() == 'Linux':
+        # Caminhos padrão para Linux
+        browser_executable_path = '/usr/bin/google-chrome'  # ou '/usr/bin/chromium-browser'
+        if not os.path.exists(browser_executable_path):
+            # Tenta encontrar o Chrome em outros locais comuns no Linux
+            browser_executable_path = '/usr/bin/chromium-browser' if os.path.exists('/usr/bin/chromium-browser') else None
+    else:
+        # Windows - geralmente o Chrome está no PATH
+        browser_executable_path = None
+    
+    try:
+        driver = uc.Chrome(
+            options=options,
+            headless=False,
+            driver_executable_path=ChromeDriverManager().install(),
+            browser_executable_path=browser_executable_path
+        )
+        log("Navegador stealth iniciado")
+        return driver
+    except Exception as e:
+        log(f"Erro ao iniciar o navegador: {str(e)}")
+        # Tentativa alternativa sem especificar o caminho do navegador
+        try:
+            driver = uc.Chrome(
+                options=options,
+                headless=False,
+                driver_executable_path=ChromeDriverManager().install()
+            )
+            log("Navegador stealth iniciado (sem browser_executable_path)")
+            return driver
+        except Exception as e2:
+            log(f"Erro na tentativa alternativa: {str(e2)}")
+            raise
 
-    driver = uc.Chrome(
-    options=options,
-    headless=False,
-    driver_executable_path=ChromeDriverManager().install(),
-    browser_executable_path="/usr/bin/google-chrome"  # ou "/usr/bin/chromium-browser"
-    )
-    log("Navegador stealth iniciado")
-    return driver
+def send_to_whatsapp(message, group_name, image_url=""):
+    """Envia mensagem com retentativas e autenticação se necessário"""
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        try:
+            args = [
+                "node",
+                os.path.join("Whatsapp", "wpp_enviar.js"),
+                message,
+                group_name,
+                image_url
+            ]
+            
+            subprocess.run(args, check=True)
+            log("Mensagem enviada via WhatsApp com sucesso")
+            return True
+            
+        except subprocess.CalledProcessError as e:
+            log(f"Erro ao enviar (tentativa {attempt}/{max_attempts}): {str(e)}")
+            
+            if attempt < max_attempts:
+                # Tenta autenticar antes de nova tentativa
+                try:
+                    run_whatsapp_auth()
+                except Exception as auth_error:
+                    log(f"Falha na reautenticação: {str(auth_error)}")
+                    break
+                    
+    return False
+    
+def check_whatsapp_auth():
+    """Verifica se a autenticação do WhatsApp está presente"""
+    auth_dir = os.path.join("Whatsapp", "auth_data")
+    if not os.path.exists(auth_dir):
+        log("Diretório de autenticação do WhatsApp não encontrado. Iniciando autenticação...")
+        run_whatsapp_auth()
+    else:
+        log("Autenticação do WhatsApp já existe. Verificando validade...")
+
+def run_whatsapp_auth():
+    """Executa o processo de autenticação do WhatsApp"""
+    log("Iniciando autenticação do WhatsApp...")
+    auth_args = [
+        "node",
+        os.path.join("Whatsapp", "wpp_auth.js")
+    ]
+    
+    try:
+        # Executa o auth e aguarda conclusão
+        subprocess.run(auth_args, check=True, timeout=300)  # 10 minutos para autenticar
+        log("Autenticação do WhatsApp concluída com sucesso!")
+        
+    except subprocess.CalledProcessError as e:
+        log(f"Falha na autenticação: {str(e)}")
+        raise Exception("Erro crítico na autenticação do WhatsApp")
+        
+    except subprocess.TimeoutExpired:
+        log("Tempo excedido para autenticação do WhatsApp")
+        raise Exception("Timeout na autenticação")
 
 def add_cookies(driver):
     """Adiciona cookies com verificação"""
@@ -350,63 +439,62 @@ def check_promotions():
     try:
         driver = init_driver()
         add_cookies(driver)
-        
+
         product_urls = get_top_offers(driver)
         if not product_urls:
             log("Nenhuma oferta encontrada")
             return
-        
+
         new_urls = [url for url in product_urls if normalize_url(url) not in [normalize_url(u) for u in sent_promotions]]
         if not new_urls:
             log("Nenhuma nova promoção encontrada")
             return
         
         log(f"{len(new_urls)} novas promoções encontradas")
+
+        check_whatsapp_auth()
         for url in new_urls:
             log(f"Processando promoção: {url}")
             try:
                 message, image_url = get_product_details(driver, url)
                 if not message:
                     continue
-                
-                # Tenta enviar com foto se existir
+
+                # Envia para Telegram
+                telegram_success = True
                 if image_url:
                     try:
-                        response = requests.post(
-                            f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto',
-                            data={
-                                'chat_id': TELEGRAM_CHAT_ID,
-                                'caption': message,
-                                'parse_mode': 'Markdown'
-                            },
-                            files={'photo': requests.get(image_url).content}
+                        telegram_success = send_telegram_message(
+                            message=message,
+                            image_url=image_url,
+                            bot_token=TELEGRAM_BOT_TOKEN,
+                            chat_id=TELEGRAM_CHAT_ID
                         )
-                        if response.status_code == 200:
-                            sent_promotions.append(normalize_url(url))
-                            save_promo_history(sent_promotions)
-                            continue
                     except Exception as e:
-                        log(f"Erro ao enviar com foto: {str(e)}")
-                
-                # Se falhar ou não tiver foto, envia apenas o texto
-                response = requests.post(
-                    f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage',
-                    data={
-                        'chat_id': TELEGRAM_CHAT_ID,
-                        'text': message,
-                        'parse_mode': 'Markdown',
-                        'disable_web_page_preview': False
-                    }
-                )
-                
-                if response.status_code == 200:
-                    sent_promotions.append(normalize_url(url))
+                        log(f"Erro ao enviar com foto para Telegram: {str(e)}")
+
+                # Envia para WhatsApp se o Telegram foi bem sucedido
+                if telegram_success:
+                    try:
+                        grupo_nome = "Central De Descontos"  # Substitua se necessário
+                        args = [
+                            "node",
+                            os.path.join("Whatsapp", "wpp_enviar.js"),
+                            message,
+                            grupo_nome,
+                            image_url or ""
+                        ]
+                        subprocess.run(args, check=True)
+                        print("✅ Script Node.js executado com sucesso.")
+                        save_promo_history(sent_promotions)
+                    except subprocess.CalledProcessError as e:
+                        print("❌ Erro ao executar o script Node.js:", e)
                 else:
-                    log(f"Erro ao enviar mensagem: {response.text}")
-            
+                    log("Falha ao enviar para Telegram - Pulando WhatsApp")
+
             except Exception as e:
                 log(f"Erro no processamento da promoção: {str(e)}")
-        
+
     except Exception as e:
         log(f"ERRO durante a verificação: {str(e)}")
     finally:
@@ -448,14 +536,14 @@ def get_last_message_time():
         return None
 
 def safe_check_promotions():
-    """Verifica o intervalo de 3 horas desde a última mensagem"""
+    """Verifica o intervalo de 1 horas desde a última mensagem"""
     last_sent_timestamp = get_last_message_time()
 
     if last_sent_timestamp:
         last_sent_time = datetime.fromtimestamp(last_sent_timestamp)
         now = datetime.now()
         time_diff = now - last_sent_time
-        remaining = timedelta(hours=3) - time_diff
+        remaining = timedelta(hours=1) - time_diff
 
         # Formatação legível para tempo decorrido
         elapsed_parts = []
@@ -484,7 +572,7 @@ def safe_check_promotions():
         else:
             remaining_str = "0s"
 
-        log(f"Última mensagem foi há {elapsed_str}. Aguardando mais {remaining_str} para completar 3h.")
+        log(f"Última mensagem foi há {elapsed_str}. Aguardando mais {remaining_str} para completar 1h.")
         if remaining.total_seconds() > 0:
             return
 
@@ -512,14 +600,15 @@ def should_run_bot(min_interval_hours=1):
     log(f"Aguardando {remaining_time//60} minutos para próxima verificação (intervalo mínimo: {min_interval_hours}h)")
     return False
 
+# Verifica se já passou o tempo mínimo desde a última execução
 safe_check_promotions()
 # Loop principal
-schedule.every(3).hours.do(safe_check_promotions)
-print("Agendado para verificar promoções a cada 3 hora.")
+schedule.every(1).hours.do(safe_check_promotions)
+print("Agendado para verificar promoções a cada 1 hora.")
 log("Bot iniciado. Pressione Ctrl+C para parar.")
 try:
     while True:
         schedule.run_pending()
-        time.sleep(10800)
+        time.sleep(3600)
 except KeyboardInterrupt:
     log("Bot encerrado pelo usuário")

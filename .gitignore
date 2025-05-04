@@ -1,1 +1,23 @@
-promocoes.json
+# Ambientes e tokens
+.env
+
+# Node.js
+node_modules/
+package-lock.json
+
+# Python
+__pycache__/
+*.pyc
+
+# VS Code
+.vscode/
+
+# Logs e temporários
+*.log
+*.tmp
+*.bak
+
+# Cache Puppeteer, Selenium, etc.
+.wwwebjs_cache/
+auth_data/
+*.json
