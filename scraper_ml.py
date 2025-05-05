@@ -423,16 +423,16 @@ def check_promotions():
 
                 # Envia para Telegram
                 telegram_success = True
-                # if image_url:
-                #     try:
-                #         telegram_success = send_telegram_message(
-                #             message=message,
-                #             image_url=image_url,
-                #             bot_token=TELEGRAM_BOT_TOKEN,
-                #             chat_id=TELEGRAM_GROUP_ID
-                #         )
-                #     except Exception as e:
-                #         log(f"Erro ao enviar com foto para Telegram: {str(e)}")
+                if image_url:
+                    try:
+                        telegram_success = send_telegram_message(
+                            message=message,
+                            image_url=image_url,
+                            bot_token=TELEGRAM_BOT_TOKEN,
+                            chat_id=TELEGRAM_GROUP_ID
+                        )
+                    except Exception as e:
+                        log(f"Erro ao enviar com foto para Telegram: {str(e)}")
 
                 # Envia para WhatsApp se o Telegram foi bem sucedido
                 if telegram_success:
