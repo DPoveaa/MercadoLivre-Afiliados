@@ -387,7 +387,7 @@ def get_product_details(driver, url, max_retries=3):
             )
 
             # Monta mensagem final
-            parts = [f"🟡 *Mercado Livre*", "", f"🔥 *{product_title[:150]}*"]
+            parts = [f"🟡 *Mercado Livre*", f"🔥 *{product_title[:150]}*"]
             if promotion_type:
                 parts.append(
                     f"{promotion_type} - *{discount_text.upper()}!* 📉"
@@ -490,6 +490,7 @@ def check_promotions():
             driver.quit()
 
 # Loop principal
+print("Bot iniciado.")
 check_promotions()
 schedule.every(1).hours.do(check_promotions)
 print("Agendado para verificar promoções a cada 1 hora.")
