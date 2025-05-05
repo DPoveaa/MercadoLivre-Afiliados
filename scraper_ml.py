@@ -32,7 +32,7 @@ load_dotenv()
 
 # Configurações Telegram
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_CHAT_ID")
+TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID")
 
 # Cookies (como lista de dicionários)
 COOKIES = json.loads(os.getenv("ML_COOKIES"))
