@@ -236,7 +236,7 @@ def get_top_offers(driver):
             except Exception:
                 continue
         
-        top_offers = sorted(offers, key=lambda x: x['discount'], reverse=True)[:1]
+        top_offers = sorted(offers, key=lambda x: x['discount'], reverse=True)[:5]
         return [offer['url'] for offer in top_offers]
     
     except Exception as e:
@@ -545,7 +545,8 @@ def should_run_bot(min_interval_hours=1):
     return False
 
 # Loop principal
-schedule.every(1).hours.do(check_promotions())
+check_promotions()
+schedule.every(1).hours.do(check_promotions)
 print("Agendado para verificar promoções a cada 1 hora.")
 log("Bot iniciado. Pressione Ctrl+C para parar.")
 try:

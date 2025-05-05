@@ -59,8 +59,26 @@ client.on('ready', async () => {
     } catch (error) {
         console.error('Erro:', error.message);
     } finally {
-        setTimeout(() => client.destroy(), 2000);
+        setTimeout(async () => {
+            try {
+                await client.destroy();
+                console.log("Cliente encerrado com sucesso.");
+            } catch (e) {
+                console.error("Erro ao encerrar o cliente:", e.message);
+            }
+        }, 2000);
     }
+    
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('❌ Uncaught Exception:', err);
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection:', reason);
+    process.exit(1);
 });
 
 
