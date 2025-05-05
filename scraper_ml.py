@@ -26,6 +26,8 @@ import requests
 import schedule
 import sys
 
+sys.stdout.reconfigure(line_buffering=True)
+
 load_dotenv()
 
 # Configurações Telegram
@@ -36,7 +38,7 @@ TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_CHAT_ID")
 COOKIES = json.loads(os.getenv("ML_COOKIES"))
 
 # Configurações
-HISTORY_FILE = 'promocoes.ml.json'
+HISTORY_FILE = 'promocoes_ml.json'
 MAX_HISTORY_SIZE = 30  # Mantém as últimas promoções
 
 # Mensagem e nome do grupo
