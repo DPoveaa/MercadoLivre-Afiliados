@@ -464,20 +464,18 @@ def check_promotions():
 
                 # Envia para WhatsApp se o Telegram foi bem sucedido
                 if telegram_success:
-                    try:
-                        grupo_nome = "Grupo Teste"  # Substitua se necessário
-                        args = [
-                            "node",
-                            os.path.join("Whatsapp", "wpp_enviar.js"),
-                            message,
-                            grupo_nome,
-                            image_url or ""
-                        ]
-                        subprocess.run(args, check=True)
-                        print("✅ Script Node.js executado com sucesso.")
-                        save_promo_history(sent_promotions)
-                    except subprocess.CalledProcessError as e:
-                        print("❌ Erro ao executar o script Node.js:", e)
+                    print("✅ Mensagem enviada com sucesso para Telegram!")
+                    grupo_nome = "Grupo Teste"  # Substitua se necessário
+                    args = [
+                        "node",
+                        os.path.join("Whatsapp", "wpp_enviar.js"),
+                        message,
+                        grupo_nome,
+                        image_url or ""
+                    ]
+                    subprocess.run(args, check=True)
+                    print("✅ Mensagem enviada com sucesso para WhatsApp!")
+                    save_promo_history(sent_promotions)
                 else:
                     log("Falha ao enviar para Telegram - Pulando WhatsApp")
 
@@ -490,60 +488,6 @@ def check_promotions():
         if driver:
             log("Fechando o navegador...")
             driver.quit()
-
-def get_last_message_time():
-    """Obtém o timestamp da última mensagem enviada pelo bot no chat/canal"""
-    try:
-        response = requests.get(
-            f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates',
-            params={'limit': 20}  # Pega as últimas 20 atualizações
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-            for update in reversed(data.get('result', [])):
-                message = update.get('channel_post') or update.get('message')
-                if not message:
-                    continue
-
-                chat_id = message.get("chat", {}).get("id")
-                if chat_id != int(TELEGRAM_GROUP_ID):
-                    continue
-
-                # Para canais, a mensagem vem de "channel_post" e não tem 'from'
-                if 'channel_post' in update or (message.get("from", {}).get("id") == 7809229983):
-                    timestamp = message.get("date")
-                    if timestamp:
-                        log(f"Última mensagem do bot encontrada em {datetime.fromtimestamp(timestamp)}")
-                        return timestamp
-
-        log("Nenhuma mensagem anterior encontrada neste chat")
-        return None
-
-    except Exception as e:
-        log(f"Erro ao buscar última mensagem: {str(e)}")
-        return None
-
-def should_run_bot(min_interval_hours=1):
-    """Verifica se já passou o tempo mínimo desde a última execução"""
-    last_time = get_last_message_time()
-    
-    if not last_time:  # Se não encontrou mensagens anteriores
-        print("Nenhuma mensagem encontrada. Executando imediatamente...")
-        return True
-    
-    current_time = int(time.time())
-    time_diff = current_time - last_time  # Diferença em segundos
-    min_interval_seconds = min_interval_hours * 3600
-    
-    if time_diff >= min_interval_seconds:
-        return True
-    
-    # Calcula quanto tempo falta para a próxima execução
-    print("Tempo restante para próxima verificação:", time_diff, "segundos")
-    remaining_time = min_interval_seconds - time_diff
-    log(f"Aguardando {remaining_time//60} minutos para próxima verificação (intervalo mínimo: {min_interval_hours}h)")
-    return False
 
 # Loop principal
 check_promotions()
