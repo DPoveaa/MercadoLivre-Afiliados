@@ -47,7 +47,7 @@ COOKIES = json.loads(os.getenv("ML_COOKIES"))
 # Configurações gerais
 HISTORY_FILE = 'promocoes_ml.json'
 MAX_HISTORY_SIZE = 30  # Mantém as últimas promoções
-TOP_N_OFFERS = os.getenv("TOP_N_OFFERS_TESTE") if TEST_MODE else os.getenv("TOP_N_OFFERS")
+TOP_N_OFFERS = int(os.getenv("TOP_N_OFFERS_TESTE") if TEST_MODE else os.getenv("TOP_N_OFFERS"))
 
 def normalize_url(url):
     try:
