@@ -435,7 +435,7 @@ def check_promotions():
                 # Envia para WhatsApp se o Telegram foi bem sucedido
                 if telegram_success:
                     try:
-                        grupo_nome = "Grupo Teste"
+                        grupo_nome = "Grupo Teste"  # Substitua se necessário
                         args = [
                             "node",
                             os.path.join("Whatsapp", "wpp_enviar.js"),
@@ -443,30 +443,15 @@ def check_promotions():
                             grupo_nome,
                             image_url or ""
                         ]
-                        
-                        log(f"Executando comando: {' '.join(args)}")
-                        
-                        # Adicione timeout e capture stdout/stderr
-                        result = subprocess.run(
-                            args,
-                            check=True,
-                            timeout=120,  # 2 minutos de timeout
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            text=True
-                        )
-                        
-                        log(f"✅ Script Node.js executado com sucesso. Output:\n{result.stdout}")
-                        if result.stderr:
-                            log(f"⚠️ Erros do Node.js:\n{result.stderr}")
-                            
-                        save_promo_history(sent_promotions)
-                    except subprocess.TimeoutExpired:
-                        log("❌ Timeout ao executar o script Node.js")
+                        subprocess.run(args)
+                        print("✅ Script Node.js executado com sucesso.")
+                        if not TEST_MODE:
+                            sent_promotions.append(normalize_url(url))
+                            save_promo_history(sent_promotions)
+                        else:
+                            log("Não salvou no histórico devido ao modo de teste.")
                     except subprocess.CalledProcessError as e:
-                        log(f"❌ Erro ao executar o script Node.js. Código: {e.returncode}\nOutput:\n{e.stdout}\nErros:\n{e.stderr}")
-                    except Exception as e:
-                        log(f"❌ Erro inesperado ao executar Node.js: {str(e)}")
+                        print("❌ Erro ao executar o script Node.js:", e)
                 else:
                     log("Falha ao enviar para Telegram - Pulando WhatsApp")
 
