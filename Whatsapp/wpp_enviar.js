@@ -22,8 +22,10 @@ client.on('auth_failure', msg => {
 
 client.on('ready', async () => {
     try {
-        console.log('[READY] Cliente pronto!');
-        const chats = await client.getChats();
+        console.log('[READY] Cliente pronto! Aguardando sincronização...');
+        await new Promise(resolve => setTimeout(resolve, 3000)); // espera 3 segundos
+
+        const chats = await client.getChats(); // isso costuma falhar se o WhatsApp ainda está sincronizando
         const grupo = chats.find(chat =>
             chat.isGroup &&
             chat.name.toLowerCase().trim() === nomeGrupo.toLowerCase().trim()
@@ -60,5 +62,6 @@ client.on('ready', async () => {
         setTimeout(() => client.destroy(), 2000);
     }
 });
+
 
 client.initialize();

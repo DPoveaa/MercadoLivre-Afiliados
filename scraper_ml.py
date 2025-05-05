@@ -30,7 +30,7 @@ load_dotenv()
 
 # Configurações Telegram
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # Cookies (como lista de dicionários)
 COOKIES = json.loads(os.getenv("ML_COOKIES"))
@@ -468,7 +468,7 @@ def check_promotions():
                             message=message,
                             image_url=image_url,
                             bot_token=TELEGRAM_BOT_TOKEN,
-                            chat_id=TELEGRAM_CHAT_ID
+                            chat_id=TELEGRAM_GROUP_ID
                         )
                     except Exception as e:
                         log(f"Erro ao enviar com foto para Telegram: {str(e)}")
@@ -518,7 +518,7 @@ def get_last_message_time():
                     continue
 
                 chat_id = message.get("chat", {}).get("id")
-                if chat_id != int(TELEGRAM_CHAT_ID):
+                if chat_id != int(TELEGRAM_GROUP_ID):
                     continue
 
                 # Para canais, a mensagem vem de "channel_post" e não tem 'from'
