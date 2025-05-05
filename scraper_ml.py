@@ -33,6 +33,8 @@ load_dotenv()
 # Verifica se está em modo de teste
 TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
 
+print("Test Mode:", TEST_MODE)
+
 # Telegram
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID_TESTE") if TEST_MODE else os.getenv("TELEGRAM_GROUP_ID")
@@ -421,21 +423,21 @@ def check_promotions():
 
                 # Envia para Telegram
                 telegram_success = True
-                if image_url:
-                    try:
-                        telegram_success = send_telegram_message(
-                            message=message,
-                            image_url=image_url,
-                            bot_token=TELEGRAM_BOT_TOKEN,
-                            chat_id=TELEGRAM_GROUP_ID
-                        )
-                    except Exception as e:
-                        log(f"Erro ao enviar com foto para Telegram: {str(e)}")
+                # if image_url:
+                #     try:
+                #         telegram_success = send_telegram_message(
+                #             message=message,
+                #             image_url=image_url,
+                #             bot_token=TELEGRAM_BOT_TOKEN,
+                #             chat_id=TELEGRAM_GROUP_ID
+                #         )
+                #     except Exception as e:
+                #         log(f"Erro ao enviar com foto para Telegram: {str(e)}")
 
                 # Envia para WhatsApp se o Telegram foi bem sucedido
                 if telegram_success:
                     try:
-                        grupo_nome = "Grupo Teste"  # Substitua se necessário
+                        grupo_nome = WHATSAPP_GROUP_NAME
                         args = [
                             "node",
                             os.path.join("Whatsapp", "wpp_enviar.js"),
