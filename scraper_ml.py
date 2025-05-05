@@ -465,6 +465,11 @@ def check_promotions():
             log("Fechando o navegador...")
             driver.quit()
 
+if TEST_MODE:
+    print("Modo de teste ativado. Não salvará no histórico.")
+else:
+    log("Modo de teste desativado. Salvará no histórico.")
+
 # Loop principal
 print("Bot iniciado.")
 check_promotions()
