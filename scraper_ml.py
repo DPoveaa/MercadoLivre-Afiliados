@@ -44,9 +44,10 @@ WHATSAPP_GROUP_NAME = os.getenv("WHATSAPP_GROUP_NAME_TESTE") if TEST_MODE else o
 # Cookies do Mercado Livre
 COOKIES = json.loads(os.getenv("ML_COOKIES"))
 
-# Configurações
+# Configurações gerais
 HISTORY_FILE = 'promocoes_ml.json'
 MAX_HISTORY_SIZE = 30  # Mantém as últimas promoções
+TOP_N_OFFERS = os.getenv("TOP_N_OFFERS_TESTE") if TEST_MODE else os.getenv("TOP_N_OFFERS")
 
 def normalize_url(url):
     try:
@@ -236,7 +237,7 @@ def get_top_offers(driver):
             except Exception:
                 continue
         
-        top_offers = sorted(offers, key=lambda x: x['discount'], reverse=True)[:5]
+        top_offers = sorted(offers, key=lambda x: x['discount'], reverse=True)[:TOP_N_OFFERS]
         return [offer['url'] for offer in top_offers]
     
     except Exception as e:
