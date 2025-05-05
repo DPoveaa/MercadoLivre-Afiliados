@@ -480,7 +480,7 @@ def check_promotions():
                     log("Falha ao enviar para Telegram - Pulando WhatsApp")
 
             except Exception as e:
-                log(f"Erro no processamento da promoção: {str(e)}")
+                log(f"")
 
     except Exception as e:
         log(f"ERRO durante a verificação: {str(e)}")
