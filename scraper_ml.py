@@ -359,7 +359,7 @@ def get_product_details(driver, url, max_retries=3):
             )
 
             # Monta mensagem final
-            parts = [f"🟡 *Mercado Livre*", f"🔥 *{product_title[:150]}*"]
+            parts = [f"🟡 *Mercado Livre*", f"🏷️ *{product_title[:150]}*"]
             if promotion_type:
                 parts.append(
                     f"{promotion_type} - *{discount_text.upper()}!* 📉"
