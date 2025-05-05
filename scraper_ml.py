@@ -128,36 +128,6 @@ def init_driver():
             log(f"Erro na tentativa alternativa: {str(e2)}")
             raise
 
-def send_to_whatsapp(message, group_name, image_url=""):
-    """Envia mensagem com retentativas e autenticação se necessário"""
-    max_attempts = 3
-    for attempt in range(1, max_attempts + 1):
-        try:
-            args = [
-                "node",
-                os.path.join("Whatsapp", "wpp_enviar.js"),
-                message,
-                group_name,
-                image_url
-            ]
-            
-            subprocess.run(args, check=True)
-            log("Mensagem enviada via WhatsApp com sucesso")
-            return True
-            
-        except subprocess.CalledProcessError as e:
-            log(f"Erro ao enviar (tentativa {attempt}/{max_attempts}): {str(e)}")
-            
-            if attempt < max_attempts:
-                # Tenta autenticar antes de nova tentativa
-                try:
-                    run_whatsapp_auth()
-                except Exception as auth_error:
-                    log(f"Falha na reautenticação: {str(auth_error)}")
-                    break
-                    
-    return False
-
 def run_whatsapp_auth():
     """Executa o processo de autenticação do WhatsApp"""
     log("Iniciando autenticação do WhatsApp...")
@@ -464,23 +434,44 @@ def check_promotions():
 
                 # Envia para WhatsApp se o Telegram foi bem sucedido
                 if telegram_success:
-                    print("✅ Mensagem enviada com sucesso para Telegram!")
-                    grupo_nome = "Grupo Teste"  # Substitua se necessário
-                    args = [
-                        "node",
-                        os.path.join("Whatsapp", "wpp_enviar.js"),
-                        message,
-                        grupo_nome,
-                        image_url or ""
-                    ]
-                    subprocess.run(args, check=True)
-                    print("✅ Mensagem enviada com sucesso para WhatsApp!")
-                    save_promo_history(sent_promotions)
+                    try:
+                        grupo_nome = "Grupo Teste"
+                        args = [
+                            "node",
+                            os.path.join("Whatsapp", "wpp_enviar.js"),
+                            message,
+                            grupo_nome,
+                            image_url or ""
+                        ]
+                        
+                        log(f"Executando comando: {' '.join(args)}")
+                        
+                        # Adicione timeout e capture stdout/stderr
+                        result = subprocess.run(
+                            args,
+                            check=True,
+                            timeout=120,  # 2 minutos de timeout
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            text=True
+                        )
+                        
+                        log(f"✅ Script Node.js executado com sucesso. Output:\n{result.stdout}")
+                        if result.stderr:
+                            log(f"⚠️ Erros do Node.js:\n{result.stderr}")
+                            
+                        save_promo_history(sent_promotions)
+                    except subprocess.TimeoutExpired:
+                        log("❌ Timeout ao executar o script Node.js")
+                    except subprocess.CalledProcessError as e:
+                        log(f"❌ Erro ao executar o script Node.js. Código: {e.returncode}\nOutput:\n{e.stdout}\nErros:\n{e.stderr}")
+                    except Exception as e:
+                        log(f"❌ Erro inesperado ao executar Node.js: {str(e)}")
                 else:
                     log("Falha ao enviar para Telegram - Pulando WhatsApp")
 
             except Exception as e:
-                log(f"")
+                log(f"Erro no processamento da promoção: {str(e)}")
 
     except Exception as e:
         log(f"ERRO durante a verificação: {str(e)}")
