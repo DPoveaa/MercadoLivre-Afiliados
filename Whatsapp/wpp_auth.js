@@ -13,9 +13,26 @@ const client = new Client({
     authStrategy: new LocalAuth({ dataPath: './auth_data' }),
     puppeteer: {
         headless: false,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-blink-features=AutomationControlled',
+          ],
     }
 });
+
+client.on('ready', async () => {
+    console.log('[READY] Cliente WhatsApp está pronto.');
+
+    // Se não teve QR recente, significa que já estava autenticado
+    if (!qrFoiEscaneadoRecentemente) {
+        await sendTelegramMessage('✅ WhatsApp já estava autenticado e está pronto.', null, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID);
+    }
+
+    process.exit(0);
+});
+
 
 client.on('qr', async (qr) => {
     console.log('[QR EVENT] Novo QR recebido');

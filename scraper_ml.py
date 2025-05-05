@@ -30,28 +30,23 @@ sys.stdout.reconfigure(line_buffering=True)
 
 load_dotenv()
 
-# Configurações Telegram
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID")
+# Verifica se está em modo de teste
+TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
 
-# Cookies (como lista de dicionários)
+# Telegram
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID_TESTE") if TEST_MODE else os.getenv("TELEGRAM_GROUP_ID")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID_TESTE") if TEST_MODE else os.getenv("TELEGRAM_CHAT_ID")
+
+# WhatsApp
+WHATSAPP_GROUP_NAME = os.getenv("WHATSAPP_GROUP_NAME_TESTE") if TEST_MODE else os.getenv("WHATSAPP_GROUP_NAME")
+
+# Cookies do Mercado Livre
 COOKIES = json.loads(os.getenv("ML_COOKIES"))
 
 # Configurações
 HISTORY_FILE = 'promocoes_ml.json'
 MAX_HISTORY_SIZE = 30  # Mantém as últimas promoções
-
-# Mensagem e nome do grupo
-mensagem = "Promoção exclusiva! Confira agora!"
-grupo = "Central De Descontos"
-
-# Comando Node.js
-cmd = [
-    "node",
-    "Whatsapp/wpp_enviar.js",
-    mensagem,
-    grupo
-]
 
 def normalize_url(url):
     try:
@@ -161,15 +156,6 @@ def send_to_whatsapp(message, group_name, image_url=""):
                     break
                     
     return False
-    
-def check_whatsapp_auth():
-    """Verifica se a autenticação do WhatsApp está presente"""
-    auth_dir = os.path.join("Whatsapp", "auth_data")
-    if not os.path.exists(auth_dir):
-        log("Diretório de autenticação do WhatsApp não encontrado. Iniciando autenticação...")
-        run_whatsapp_auth()
-    else:
-        log("Autenticação do WhatsApp já existe. Verificando validade...")
 
 def run_whatsapp_auth():
     """Executa o processo de autenticação do WhatsApp"""
@@ -250,7 +236,7 @@ def get_top_offers(driver):
             except Exception:
                 continue
         
-        top_offers = sorted(offers, key=lambda x: x['discount'], reverse=True)[:5]
+        top_offers = sorted(offers, key=lambda x: x['discount'], reverse=True)[:1]
         return [offer['url'] for offer in top_offers]
     
     except Exception as e:
@@ -454,7 +440,7 @@ def check_promotions():
         
         log(f"{len(new_urls)} novas promoções encontradas")
 
-        check_whatsapp_auth()
+        run_whatsapp_auth()
         for url in new_urls:
             log(f"Processando promoção: {url}")
             try:
@@ -478,7 +464,7 @@ def check_promotions():
                 # Envia para WhatsApp se o Telegram foi bem sucedido
                 if telegram_success:
                     try:
-                        grupo_nome = "Central De Descontos"  # Substitua se necessário
+                        grupo_nome = "Grupo Teste"  # Substitua se necessário
                         args = [
                             "node",
                             os.path.join("Whatsapp", "wpp_enviar.js"),
@@ -537,50 +523,6 @@ def get_last_message_time():
         log(f"Erro ao buscar última mensagem: {str(e)}")
         return None
 
-def safe_check_promotions():
-    """Verifica o intervalo de 1 horas desde a última mensagem"""
-    last_sent_timestamp = get_last_message_time()
-
-    if last_sent_timestamp:
-        last_sent_time = datetime.fromtimestamp(last_sent_timestamp)
-        now = datetime.now()
-        time_diff = now - last_sent_time
-        remaining = timedelta(hours=1) - time_diff
-
-        # Formatação legível para tempo decorrido
-        elapsed_parts = []
-        if time_diff.days > 0:
-            elapsed_parts.append(f"{time_diff.days}d")
-        if time_diff.seconds >= 3600:
-            elapsed_parts.append(f"{time_diff.seconds // 3600}h")
-        if (time_diff.seconds % 3600) >= 60:
-            elapsed_parts.append(f"{(time_diff.seconds % 3600) // 60}min")
-        if (time_diff.seconds % 60) > 0:
-            elapsed_parts.append(f"{time_diff.seconds % 60}s")
-        elapsed_str = " ".join(elapsed_parts)
-
-        # Formatação legível para tempo restante
-        remaining_parts = []
-        if remaining.total_seconds() > 0:
-            if remaining.days > 0:
-                remaining_parts.append(f"{remaining.days}d")
-            if remaining.seconds >= 3600:
-                remaining_parts.append(f"{remaining.seconds // 3600}h")
-            if (remaining.seconds % 3600) >= 60:
-                remaining_parts.append(f"{(remaining.seconds % 3600) // 60}min")
-            if (remaining.seconds % 60) > 0:
-                remaining_parts.append(f"{remaining.seconds % 60}s")
-            remaining_str = " ".join(remaining_parts)
-        else:
-            remaining_str = "0s"
-
-        log(f"Última mensagem foi há {elapsed_str}. Aguardando mais {remaining_str} para completar 1h.")
-        if remaining.total_seconds() > 0:
-            return
-
-    check_promotions()
-    save_promo_history(sent_promotions)
-
 def should_run_bot(min_interval_hours=1):
     """Verifica se já passou o tempo mínimo desde a última execução"""
     last_time = get_last_message_time()
@@ -602,10 +544,8 @@ def should_run_bot(min_interval_hours=1):
     log(f"Aguardando {remaining_time//60} minutos para próxima verificação (intervalo mínimo: {min_interval_hours}h)")
     return False
 
-# Verifica se já passou o tempo mínimo desde a última execução
-safe_check_promotions()
 # Loop principal
-schedule.every(1).hours.do(safe_check_promotions)
+schedule.every(1).hours.do(check_promotions())
 print("Agendado para verificar promoções a cada 1 hora.")
 log("Bot iniciado. Pressione Ctrl+C para parar.")
 try:
