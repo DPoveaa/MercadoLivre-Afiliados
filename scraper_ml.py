@@ -51,9 +51,12 @@ COOKIES = json.loads(os.getenv("ML_COOKIES"))
 
 # Configurações gerais
 if TEST_MODE:
+    print("Modo de teste ativado, salvando em promocoes_teste.json")
     HISTORY_FILE = 'promocoes_teste.json'
 else:
     HISTORY_FILE = 'promocoes_ml.json'
+    print("Salvando em promocoes_ml.json")
+    
 MAX_HISTORY_SIZE = 100  # Mantém as últimas promoções
 TOP_N_OFFERS = int(os.getenv("TOP_N_OFFERS_TESTE") if TEST_MODE else os.getenv("TOP_N_OFFERS"))
 SIMILARITY_THRESHOLD = 0.88 # Limiar de similaridade
@@ -509,11 +512,6 @@ def check_promotions():
         if driver:
             log("Fechando o navegador...")
             driver.quit()
-
-if TEST_MODE:
-    print("Modo de teste ativado. Não salvará no histórico.")
-else:
-    log("Modo de teste desativado. Salvará no histórico.")
 
 # Loop principal
 print("Bot iniciado.")
