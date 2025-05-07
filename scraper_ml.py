@@ -50,7 +50,10 @@ WHATSAPP_GROUP_NAME = os.getenv("WHATSAPP_GROUP_NAME_TESTE") if TEST_MODE else o
 COOKIES = json.loads(os.getenv("ML_COOKIES"))
 
 # Configurações gerais
-HISTORY_FILE = 'promocoes_ml.json'
+if TEST_MODE:
+    HISTORY_FILE = 'promocoes_teste.json'
+else:
+    HISTORY_FILE = 'promocoes_ml.json'
 MAX_HISTORY_SIZE = 100  # Mantém as últimas promoções
 TOP_N_OFFERS = int(os.getenv("TOP_N_OFFERS_TESTE") if TEST_MODE else os.getenv("TOP_N_OFFERS"))
 SIMILARITY_THRESHOLD = 0.88 # Limiar de similaridade
@@ -485,12 +488,9 @@ def check_promotions():
                         ]
                         subprocess.run(args)
                         log("✅ Enviado ao WhatsApp com sucesso.")
-                        if not TEST_MODE:
-                            log("\nSalvo no histórico.\n")
-                        else:
-                            sent_promotions.append(product_title)
-                            save_promo_history(sent_promotions)
-                            log("Não salvou no histórico devido ao modo de teste.")
+                        sent_promotions.append(product_title)
+                        save_promo_history(sent_promotions)
+
                     except subprocess.CalledProcessError as e:
                         log(f"❌ Erro ao executar o script Node.js: {e}")
                 else:
