@@ -51,32 +51,29 @@ COOKIES = json.loads(os.getenv("ML_COOKIES"))
 
 # Configurações gerais
 HISTORY_FILE = 'promocoes_ml.json'
-MAX_HISTORY_SIZE = 30  # Mantém as últimas promoções
+MAX_HISTORY_SIZE = 100  # Mantém as últimas promoções
 TOP_N_OFFERS = int(os.getenv("TOP_N_OFFERS_TESTE") if TEST_MODE else os.getenv("TOP_N_OFFERS"))
 SIMILARITY_THRESHOLD = 0.88 # Limiar de similaridade
 
-def normalize_product_name(name: str) -> str:
-    # 1) lower, tira acentos
-    s = unicodedata.normalize('NFD', name.lower())
-    s = ''.join(ch for ch in s if unicodedata.category(ch) != 'Mn')
-    # 2) remove unidades e números (300g, 12 un, etc.)
-    s = re.sub(r'\b\d+(\.\d+)?\s*(g|kg|ml|un|pct|ct|cuecas?)\b', '', s)
-    # 3) remove tudo que não letra ou espaço
-    s = re.sub(r'[^a-z\s]', ' ', s)
-    # 4) colapsa espaços
-    s = re.sub(r'\s+', ' ', s).strip()
-    return s
 
-def is_similar(a: str, b: str, thresh: float = SIMILARITY_THRESHOLD) -> bool:
-    a_norm = normalize_product_name(a)
-    b_norm = normalize_product_name(b)
-    score = SequenceMatcher(None, a_norm, b_norm).ratio()
-    
-    print(f"\n[DEBUG] Comparando:")
-    print(f"  - Original A: '{a}' → Normalizado: '{a_norm}'")
-    print(f"  - Original B: '{b}' → Normalizado: '{b_norm}'")
-    print(f"  - Similaridade: {score:.4f} (Threshold: {thresh})")
+# Lista de URLs fornecida
+OFFER_URLS = [
+    "https://www.mercadolivre.com.br/ofertas?container_id=MLB779543-1&domain_id=MLB-PERFUMES#filter_applied=domain_id&filter_position=18&is_recommended_domain=false&origin=scut",
+    "https://www.mercadolivre.com.br/ofertas?container_id=MLB779540-1&domain_id=MLB-WELDING_MACHINES$MLB-TOOLS$MLB-WELDING_BLOWTORCHES$MLB-WELDING_RODS$MLB-DRILLS_SCREWDRIVERS$MLB-ELECTRIC_DRILLS$MLB-DRILL_BITS$MLB-POWER_GRINDERS$MLB-COMBINED_TOOL_SETS$MLB-ELECTRIC_CIRCULAR_SAWS$MLB-TOOL_ACCESSORIES_AND_SPARES$MLB-WRENCHES$MLB-WRENCH_SETS#filter_applied=domain_id&filter_position=15&is_recommended_domain=false&origin=scut",
+    "https://www.mercadolivre.com.br/ofertas?container_id=MLB779539-1&domain_id=MLB-TELEVISIONS#filter_applied=domain_id&filter_position=14&is_recommended_domain=false&origin=scut",
+    "https://www.mercadolivre.com.br/ofertas?container_id=MLB773331-2#filter_applied=container_id&filter_position=13&is_recommended_domain=false&origin=scut",
+    "https://www.mercadolivre.com.br/ofertas?container_id=MLB779538-1&domain_id=MLB-HEADPHONES#filter_applied=domain_id&filter_position=12&is_recommended_domain=false&origin=scut",
+    "https://www.mercadolivre.com.br/ofertas?container_id=MLB779536-1&domain_id=MLB-NOTEBOOKS#filter_applied=domain_id&filter_position=11&is_recommended_domain=false&origin=scut",
+    "https://www.mercadolivre.com.br/ofertas?container_id=MLB779535-1&domain_id=MLB-CELLPHONES#filter_applied=domain_id&filter_position=10&is_recommended_domain=false&origin=scut",
+    "https://www.mercadolivre.com.br/ofertas?container_id=MLB779544-1&domain_id=MLB-SWEATSHIRTS_AND_HOODIES$MLB-PANTS$MLB-JACKETS_AND_COATS$MLB-T_SHIRTS$MLB-SOCKS$MLB-MALE_UNDERWEAR$MLB-SPORTSWEAR$MLB-LEGGINGS$MLB-DRESSES$MLB-LOAFERS_AND_OXFORDS$MLB-BLOUSES$MLB-SHIRTS$MLB-WRISTWATCHES$MLB-SUNGLASSES#filter_applied=domain_id&filter_position=8&is_recommended_domain=true&origin=scut",
+    "https://www.mercadolivre.com.br/ofertas?container_id=MLB779537-1&domain_id=MLB-SNEAKERS#filter_applied=domain_id&filter_position=7&is_recommended_domain=true&origin=scut",
+    "https://www.mercadolivre.com.br/ofertas?container_id=MLB779362-1&price=0.0-100.0#filter_applied=price&filter_position=6&is_recommended_domain=false&origin=scut",
+    "https://www.mercadolivre.com.br/ofertas?container_id=MLB783320-1&domain_id=MLB-SUPPLEMENTS#filter_applied=domain_id&filter_position=3&is_recommended_domain=true&origin=scut"
+]
 
+
+def is_similar(a: str, b: str, thresh: float = 0.95) -> bool:
+    score = SequenceMatcher(None, a, b).ratio()
     return score >= thresh
     
 # Função para carregar o histórico de promoções
@@ -197,42 +194,65 @@ def add_cookies(driver):
     except Exception as e:
         log(f"ERRO crítico nos cookies: {str(e)}")
         raise
-
 def get_top_offers(driver):
-    """Busca ofertas com delays aleatórios"""
-    try:
-        log("Acessando página de ofertas...")
-        driver.get('https://www.mercadolivre.com.br/ofertas')
-        time.sleep(random.uniform(3, 6))  # Delay aleatório
-        
-        WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, '.andes-card.poly-card'))
-        )
-        
-        # Scroll gradual para simular comportamento humano
-        for _ in range(3):
-            driver.execute_script("window.scrollBy(0, 5000)")
-            time.sleep(random.uniform(0.5, 1.5))
-        
-        cards = driver.find_elements(By.CSS_SELECTOR, '.andes-card.poly-card')
-        offers = []
-        
-        for card in cards[:20]:
-            try:
-                time.sleep(random.uniform(0.2, 0.7))  # Delay entre cards
-                discount_element = card.find_element(By.CSS_SELECTOR, '.andes-money-amount__discount')
-                discount = float(discount_element.text.replace('% OFF', ''))
-                link = card.find_element(By.CSS_SELECTOR, 'a.poly-component__title').get_attribute('href')
-                offers.append({'discount': discount, 'url': link})
-            except Exception:
-                continue
-        
-        top_offers = sorted(offers, key=lambda x: x['discount'], reverse=True)[:TOP_N_OFFERS]
-        return [offer['url'] for offer in top_offers]
+    """Coleta top 5 ofertas de cada URL na lista"""
+    all_offers = []
     
-    except Exception as e:
-        log(f"ERRO ao buscar ofertas: {str(e)}")
-        return []
+    for url in OFFER_URLS:
+        try:
+            log(f"\nAcessando categoria: {url}")
+            driver.get(url)
+            
+            # Espera inicial combinada com delay
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, '.andes-card.poly-card'))
+            )
+            time.sleep(random.uniform(2, 4))
+            
+            # Scroll dinâmico para carregar mais itens
+            last_height = driver.execute_script("return document.body.scrollHeight")
+            for _ in range(3):
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(random.uniform(1.5, 2.5))
+                new_height = driver.execute_script("return document.body.scrollHeight")
+                if new_height == last_height:
+                    break
+                last_height = new_height
+            
+            # Coleta de cards
+            cards = driver.find_elements(By.CSS_SELECTOR, '.andes-card.poly-card')
+            log(f"Encontrados {len(cards)} produtos na categoria")
+            
+            # Processamento dos cards
+            category_offers = []
+            for card in cards:
+                try:
+                    discount = card.find_element(By.CSS_SELECTOR, '.andes-money-amount__discount').text.replace('% OFF', '')
+                    link = card.find_element(By.CSS_SELECTOR, 'a.poly-component__title').get_attribute('href')
+                    category_offers.append({
+                        'discount': float(discount),
+                        'url': link,
+                        'category': url.split('domain_id=')[1].split('&')[0] if 'domain_id=' in url else 'unknown'
+                    })
+                except Exception as e:
+                    continue
+            
+            # Seleciona top 5 da categoria
+            top_category = sorted(category_offers, key=lambda x: x['discount'], reverse=True)[:TOP_N_OFFERS]
+            all_offers.extend(top_category)
+            
+            log(f"Top 5 coletados: {[item['discount'] for item in top_category]}")
+            
+            # Intervalo aleatório entre categorias
+            time.sleep(random.uniform(5, 10))
+            
+        except Exception as e:
+            log(f"Falha na categoria {url}: {str(e)}")
+            continue
+    
+    # Ordena todos os resultados e pega os Top N globais (se necessário)
+    final_top = sorted(all_offers, key=lambda x: x['discount'], reverse=True)
+    return [item['url'] for item in final_top]
     
 def get_product_details(driver, url, max_retries=3):
     """Extrai detalhes do produto com tentativas em caso de erro"""
@@ -434,11 +454,8 @@ def check_promotions():
                 if not message:
                     continue
 
-                # Normaliza o nome do produto
-                normalized_name = normalize_product_name(product_title)
-
-                if any(is_similar(normalized_name, sent) for sent in sent_names):
-                    log(f"Produto muito parecido com um já enviado: {normalized_name}")
+                if any(is_similar(product_title, sent) for sent in sent_names):
+                    log(f"Produto muito parecido com um já enviado: {product_title}")
                     continue
 
                 # Envia para Telegram
@@ -468,10 +485,10 @@ def check_promotions():
                         subprocess.run(args)
                         log("✅ Enviado ao WhatsApp com sucesso.")
                         if not TEST_MODE:
-                            sent_promotions.append(normalized_name)
-                            save_promo_history(sent_promotions)
                             log("\nSalvo no histórico.\n")
                         else:
+                            sent_promotions.append(product_title)
+                            save_promo_history(sent_promotions)
                             log("Não salvou no histórico devido ao modo de teste.")
                     except subprocess.CalledProcessError as e:
                         log(f"❌ Erro ao executar o script Node.js: {e}")
