@@ -194,6 +194,7 @@ def add_cookies(driver):
     except Exception as e:
         log(f"ERRO crítico nos cookies: {str(e)}")
         raise
+    
 def get_top_offers(driver):
     """Coleta top 5 ofertas de cada URL na lista"""
     all_offers = []
@@ -494,6 +495,10 @@ def check_promotions():
                         log(f"❌ Erro ao executar o script Node.js: {e}")
                 else:
                     log("Falha ao enviar para Telegram - Pulando WhatsApp")
+
+                sent_promotions.append(product_title)
+                save_promo_history(sent_promotions)
+                log("Produto salvo no histórico.")
 
             except Exception as e:
                 log(f"Erro no processamento da promoção: {str(e)}")
