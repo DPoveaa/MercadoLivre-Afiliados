@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
+import os
 import re
 from tempfile import mkdtemp
+from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -20,11 +22,25 @@ import requests
 import schedule
 import sys
 
+sys.stdout.reconfigure(line_buffering=True)
+
+load_dotenv()
+
+# Verifica se está em modo de teste
+TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
+
+print("Test Mode:", TEST_MODE)
+
+# Configurações Telegram
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID_TESTE") if TEST_MODE else os.getenv("TELEGRAM_GROUP_ID")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID_TESTE") if TEST_MODE else os.getenv("TELEGRAM_CHAT_ID")
+
+# Cookies da Shopee
+COOKIES = json.loads(os.getenv("SHOPEE_COOKIES", "[]"))
+
 # Configurações
-TELEGRAM_BOT_TOKEN = '7809229983:AAGBphj2suFOzCeQOjhNNEnqDeb7aihMYpE'
-TELEGRAM_CHAT_ID = '-1002388728835'  # Substitua pelo seu chat ID
-# Configurações
-HISTORY_FILE = 'promocoes.shp.json'
+HISTORY_FILE = 'promocoes_shp.json'
 MAX_HISTORY_SIZE = 30  # Mantém as últimas promoções
 
 def normalize_url(url):
@@ -53,26 +69,6 @@ def save_promo_history(history):
 
 # Variável global para armazenar promoções já enviadas
 sent_promotions = load_promo_history()
-
-# Seus cookies (mantenha apenas os essenciais)
-COOKIES = [
-    {'name': '_QPWSDCXHZQA', 'value': '933f4763-b2b2-4d01-95ab-6d517e90e297', 'domain': 'affiliate.shopee.com.br'},
-    {'name': '_sapid', 'value': 'bbbc66523be9723aae9a4a61df417a56b1d12f4836b1fb7b828105ca', 'domain': 'affiliate.shopee.com.br'},
-    {'name': 'language', 'value': 'pt-BR', 'domain': 'affiliate.shopee.com.br'},
-    {'name': 'REC_T_ID', 'value': 'cb0a685f-24a5-11f0-aa3a-9a8585d5e345', 'domain': '.shopee.com.br'},
-    {'name': 'REC7iLP4Q', 'value': 'd7bd50c7-3779-47aa-86ea-b29ae87b6e54', 'domain': 'affiliate.shopee.com.br'},
-    {'name': 'SPC_CDS_CHAT', 'value': '5f2e9b14-7be5-4cc0-8ff4-3626a01e71f1', 'domain': '.shopee.com.br'},
-    {'name': 'SPC_CLIENTID', 'value': 'jpmNr6QryZUknpvqxbmjfueqjdpoeena', 'domain': '.shopee.com.br'},
-    {'name': 'SPC_EC', 'value': '.bkdCY3h6VEU3enFDelVLVwtkQ28z0ovi2t5TQMaFjNOSpPvBT08vmkLAdglMGqPzyxUomlmHxZQ16GV2MOjCR5p5aHJbWOFSfNGjMkhpA4eEoq+Vd+9J1TrhlNhDB0F7+FPxZiQv6nKL3WmhBl0yXypNhNC3FWXUu6aMVXAJEhiT4u701ONKe2WRXeMApBEUcUi7dlVta4Z6OzcmhFK3pysmmwfkV3j1HYZ1E+cO5dttSmR3pcrSfYPdr71MFaY1', 'domain': '.shopee.com.br'},
-    {'name': 'SPC_F', 'value': 'jpmNr6QryZUknpvqBg16RjHjLUjNnyOL', 'domain': '.shopee.com.br'},
-    {'name': 'SPC_R_T_ID', 'value': 'vWhA+SQvD0LPcuozA+KR8IpY29NTIR/S8S9hXJqpyHpRDS+peNTVrBI4pKVhOfp7/WwbpTa5czkpw+mgWsE/RnmZbdbxVPwVst+R+R4W7OXzJWLZN2BQXZ+qoid5x9P8JtDn0PQGh2jet4BEfdmfsE7Bs8od4MNc3tHK0x0Lefs=', 'domain': '.shopee.com.br'},
-    {'name': 'SPC_R_T_IV', 'value': 'R0JjNzJoOGNya0dES2pEZQ==', 'domain': '.shopee.com.br'},
-    {'name': 'SPC_SI', 'value': 'OIkRaAAAAABhUkFseXVRV0bXRQAAAAAAZEpIb2JRYk8=', 'domain': '.shopee.com.br'},
-    {'name': 'SPC_ST', 'value': '.RXZEZFVQRzZ4TW5nNk5lNHRooSWcDt0/yAT0ewkeJP+7rgXeNxPa3ZuTByFW8L5ufK7W2JLO00VG2CUSUAnEWfKQpCEHhK8H3L3iThzzxqiGyF4gIHBkJ7q1gSYovTYuKLtImcArMpLRlLL8h4f7EZ8byDNemCfsiwtbs0FhkJP1ZH5Sj4FOTiBCTHt7eIuxs9oUHGMdPE14EGuPeLQnftvVULy6dcVpjNSAT9r0JwyNoyU8ldbnehicszn5U8Xt', 'domain': '.shopee.com.br'},
-    {'name': 'SPC_T_ID', 'value': 'vWhA+SQvD0LPcuozA+KR8IpY29NTIR/S8S9hXJqpyHpRDS+peNTVrBI4pKVhOfp7/WwbpTa5czkpw+mgWsE/RnmZbdbxVPwVst+R+R4W7OXzJWLZN2BQXZ+qoid5x9P8JtDn0PQGh2jet4BEfdmfsE7Bs8od4MNc3tHK0x0Lefs=', 'domain': '.shopee.com.br'},
-    {'name': 'SPC_T_IV', 'value': 'R0JjNzJoOGNya0dES2pEZQ==', 'domain': '.shopee.com.br'},
-    {'name': 'SPC_U', 'value': '422964213', 'domain': '.shopee.com.br'}
-]
 
 def log(message):
     """Função para logging com timestamp"""
@@ -406,14 +402,15 @@ def should_run_bot(min_interval_hours=1):
     log(f"Aguardando {remaining_time//60} minutos para próxima verificação (intervalo mínimo: {min_interval_hours}h)")
     return False
 
-safe_check_promotions()
 # Loop principal
-schedule.every(3).hours.do(safe_check_promotions)
-print("Agendado para verificar promoções a cada 3 hora.")
+print("Bot iniciado.")
+check_promotions()
+schedule.every(1).hours.do(check_promotions)
+print("Agendado para verificar promoções a cada 1 hora.")
 log("Bot iniciado. Pressione Ctrl+C para parar.")
 try:
     while True:
         schedule.run_pending()
-        time.sleep(10800)
+        time.sleep(3600)
 except KeyboardInterrupt:
     log("Bot encerrado pelo usuário")

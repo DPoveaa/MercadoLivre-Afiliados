@@ -7,8 +7,11 @@ from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
+from difflib import SequenceMatcher
+from collections import deque
 from Telegram.tl_enviar import send_telegram_message
 import json
+import unicodedata
 from collections import deque
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
@@ -50,28 +53,43 @@ COOKIES = json.loads(os.getenv("ML_COOKIES"))
 HISTORY_FILE = 'promocoes_ml.json'
 MAX_HISTORY_SIZE = 30  # Mantém as últimas promoções
 TOP_N_OFFERS = int(os.getenv("TOP_N_OFFERS_TESTE") if TEST_MODE else os.getenv("TOP_N_OFFERS"))
+SIMILARITY_THRESHOLD = 0.88 # Limiar de similaridade
 
-def normalize_url(url):
-    try:
-        parsed = urlparse(url)
-        clean_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', '', ''))
-        return clean_url
-    except:
-        return url
+def normalize_product_name(name: str) -> str:
+    # 1) lower, tira acentos
+    s = unicodedata.normalize('NFD', name.lower())
+    s = ''.join(ch for ch in s if unicodedata.category(ch) != 'Mn')
+    # 2) remove unidades e números (300g, 12 un, etc.)
+    s = re.sub(r'\b\d+(\.\d+)?\s*(g|kg|ml|un|pct|ct|cuecas?)\b', '', s)
+    # 3) remove tudo que não letra ou espaço
+    s = re.sub(r'[^a-z\s]', ' ', s)
+    # 4) colapsa espaços
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s
+
+def is_similar(a: str, b: str, thresh: float = SIMILARITY_THRESHOLD) -> bool:
+    a_norm = normalize_product_name(a)
+    b_norm = normalize_product_name(b)
+    score = SequenceMatcher(None, a_norm, b_norm).ratio()
+    
+    print(f"\n[DEBUG] Comparando:")
+    print(f"  - Original A: '{a}' → Normalizado: '{a_norm}'")
+    print(f"  - Original B: '{b}' → Normalizado: '{b_norm}'")
+    print(f"  - Similaridade: {score:.4f} (Threshold: {thresh})")
+
+    return score >= thresh
     
 # Função para carregar o histórico de promoções
-def load_promo_history():
+def load_promo_history() -> deque:
     try:
         with open(HISTORY_FILE, 'r') as f:
-            history = json.load(f)
-            # Normaliza tudo na leitura
-            history = [normalize_url(url) for url in history]
-            return deque(history, maxlen=MAX_HISTORY_SIZE)
+            nomes = json.load(f)
+        return deque(nomes, maxlen=MAX_HISTORY_SIZE)
     except (FileNotFoundError, json.JSONDecodeError):
         return deque(maxlen=MAX_HISTORY_SIZE)
 
 # Função para salvar o histórico
-def save_promo_history(history):
+def save_promo_history(history: deque):
     with open(HISTORY_FILE, 'w') as f:
         json.dump(list(history), f)
 
@@ -384,17 +402,16 @@ def get_product_details(driver, url, max_retries=3):
             final_url = affiliate_link or url
             parts.append(f"🛒 *Garanta agora:*\n🔗 {final_url}")
 
-            return "\n\n".join(parts), image_url
+            return product_title, "\n\n".join(parts), image_url
 
         except Exception as e:
             log(f"Erro ao extrair detalhes (tentativa {attempt}/{max_retries}): {e}")
             time.sleep(random.uniform(2, 4))
 
     log(f"Falha definitiva ao extrair dados do produto após {max_retries} tentativas: {url}")
-    return None, None
+    return None, None, None
 
 def check_promotions():
-    """Função principal que verifica as promoções"""
     log("Iniciando verificação de promoções...")
     driver = None
     try:
@@ -406,19 +423,22 @@ def check_promotions():
             log("Nenhuma oferta encontrada")
             return
 
-        new_urls = [url for url in product_urls if normalize_url(url) not in [normalize_url(u) for u in sent_promotions]]
-        if not new_urls:
-            log("Nenhuma nova promoção encontrada")
-            return
-        
-        log(f"{len(new_urls)} novas promoções encontradas")
+        # Coleta nomes já enviados
+        sent_names = set(sent_promotions)  # já estão normalizados no arquivo
 
         run_whatsapp_auth()
-        for url in new_urls:
+        for url in product_urls:
             log(f"Processando promoção: {url}")
             try:
-                message, image_url = get_product_details(driver, url)
+                product_title, message, image_url = get_product_details(driver, url)
                 if not message:
+                    continue
+
+                # Normaliza o nome do produto
+                normalized_name = normalize_product_name(product_title)
+
+                if any(is_similar(normalized_name, sent) for sent in sent_names):
+                    log(f"Produto muito parecido com um já enviado: {normalized_name}")
                     continue
 
                 # Envia para Telegram
@@ -446,14 +466,15 @@ def check_promotions():
                             image_url or ""
                         ]
                         subprocess.run(args)
-                        print("✅ Script Node.js executado com sucesso.")
+                        log("✅ Enviado ao WhatsApp com sucesso.")
                         if not TEST_MODE:
-                            sent_promotions.append(normalize_url(url))
-                            save_promo_history(sent_promotions)
+                            log("Não salvou no histórico devido ao modo de teste.")
                         else:
+                            sent_promotions.append(normalized_name)
+                            save_promo_history(sent_promotions)
                             log("Não salvou no histórico devido ao modo de teste.")
                     except subprocess.CalledProcessError as e:
-                        print("❌ Erro ao executar o script Node.js:", e)
+                        log(f"❌ Erro ao executar o script Node.js: {e}")
                 else:
                     log("Falha ao enviar para Telegram - Pulando WhatsApp")
 
