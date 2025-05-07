@@ -468,10 +468,10 @@ def check_promotions():
                         subprocess.run(args)
                         log("✅ Enviado ao WhatsApp com sucesso.")
                         if not TEST_MODE:
-                            log("Não salvou no histórico devido ao modo de teste.")
-                        else:
                             sent_promotions.append(normalized_name)
                             save_promo_history(sent_promotions)
+                            log("\nSalvo no histórico.\n")
+                        else:
                             log("Não salvou no histórico devido ao modo de teste.")
                     except subprocess.CalledProcessError as e:
                         log(f"❌ Erro ao executar o script Node.js: {e}")
