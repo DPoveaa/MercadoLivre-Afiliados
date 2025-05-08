@@ -201,7 +201,7 @@ def is_valid_image_url(url):
         print(f"Erro ao validar imagem {url}: {e}")
         return False
 
-def send_telegram_message(products):
+def send_telegram_message(products, driver):
     """Envia os resultados formatados para o Telegram com imagem"""
     TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
     CHAT_ID = os.getenv('TELEGRAM_CHAT_ID_TESTE')
@@ -533,8 +533,8 @@ def run_scraper():
             products_data = generate_affiliate_links(driver, deal_links)
             print("Dados coletados:", products_data)
             
-            # Envia para o Telegram
-            send_telegram_message(products_data)
+            # Envia para o Telegram passando o driver
+            send_telegram_message(products_data, driver)
 
     except Exception as e:
         print(f"Erro durante a execução do scraper: {e}")
