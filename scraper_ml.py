@@ -236,11 +236,16 @@ def get_top_offers(driver):
                 try:
                     discount = card.find_element(By.CSS_SELECTOR, '.andes-money-amount__discount').text.replace('% OFF', '')
                     link = card.find_element(By.CSS_SELECTOR, 'a.poly-component__title').get_attribute('href')
-                    category_offers.append({
-                        'discount': float(discount),
-                        'url': link,
-                        'category': url.split('domain_id=')[1].split('&')[0] if 'domain_id=' in url else 'unknown'
-                    })
+                    title = card.find_element(By.CSS_SELECTOR, 'a.poly-component__title').text.strip()
+                    
+                    # Verifica se já existe um produto similar na lista atual
+                    if not any(is_similar(title, offer['title']) for offer in category_offers):
+                        category_offers.append({
+                            'discount': float(discount),
+                            'url': link,
+                            'title': title,
+                            'category': url.split('domain_id=')[1].split('&')[0] if 'domain_id=' in url else 'unknown'
+                        })
                 except Exception as e:
                     continue
             
@@ -259,7 +264,14 @@ def get_top_offers(driver):
     
     # Ordena todos os resultados e pega os Top N globais (se necessário)
     final_top = sorted(all_offers, key=lambda x: x['discount'], reverse=True)
-    return [item['url'] for item in final_top]
+    
+    # Filtra produtos similares da lista final
+    filtered_offers = []
+    for offer in final_top:
+        if not any(is_similar(offer['title'], existing['title']) for existing in filtered_offers):
+            filtered_offers.append(offer)
+    
+    return [item['url'] for item in filtered_offers]
     
 def get_product_details(driver, url, max_retries=3):
     """Extrai detalhes do produto com tentativas em caso de erro"""

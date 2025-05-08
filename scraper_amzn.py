@@ -12,11 +12,63 @@ from selenium.webdriver.chrome.options import Options
 import requests
 import re
 from datetime import datetime
+from difflib import SequenceMatcher
+from urllib.parse import urlparse
+import mimetypes
+import schedule
 
 load_dotenv()
 
-cookies_env = os.getenv('AMAZON_COOKIES')
-amazon_cookies = json.loads(cookies_env)
+# Load cookies from environment variable
+COOKIES_JSON = os.getenv('AMAZON_COOKIES')
+if not COOKIES_JSON:
+    raise ValueError("AMAZON_COOKIES environment variable not found in .env file")
+
+try:
+    COOKIES = json.loads(COOKIES_JSON)
+except json.JSONDecodeError as e:
+    raise ValueError(f"Invalid JSON in AMAZON_COOKIES: {e}")
+
+def is_similar(a: str, b: str, thresh: float = 0.95) -> bool:
+    """Compare two strings and return True if they are similar above the threshold."""
+    score = SequenceMatcher(None, a, b).ratio()
+    return score >= thresh
+
+def load_sent_products():
+    """Load the list of previously sent products from JSON file."""
+    try:
+        if os.path.exists('produtos_amazon.json'):
+            with open('produtos_amazon.json', 'r', encoding='utf-8') as f:
+                products = json.load(f)
+                # Verifica se precisa limpar o arquivo
+                if len(products) >= 30:
+                    print("Limite de 30 produtos atingido. Limpando arquivo...")
+                    return []
+                return products
+        return []
+    except Exception as e:
+        print(f"Erro ao carregar produtos enviados: {e}")
+        return []
+
+def save_sent_products(products):
+    """Save the list of sent products to JSON file."""
+    try:
+        # Verifica se atingiu o limite antes de salvar
+        if len(products) >= 30:
+            print("Limite de 30 produtos atingido. Limpando arquivo...")
+            products = []
+            
+        with open('produtos_amazon.json', 'w', encoding='utf-8') as f:
+            json.dump(products, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Erro ao salvar produtos enviados: {e}")
+
+def is_product_already_sent(product_name, sent_products):
+    """Check if a product has already been sent by comparing names."""
+    for sent_product in sent_products:
+        if is_similar(product_name, sent_product):
+            return True
+    return False
 
 def get_deals_with_discounts(driver):
     """Coleta descontos e links dos produtos."""
@@ -50,6 +102,105 @@ def get_deals_with_discounts(driver):
     
     return deals
 
+def get_alternative_image(driver, product_name):
+    """Tenta obter uma imagem alternativa do produto."""
+    try:
+        # Lista de seletores CSS para tentar encontrar a imagem
+        selectors = [
+            "#landingImage",  # Imagem principal
+            "#imgTagWrapperId img",  # Imagem dentro do wrapper
+            "#main-image-container img",  # Qualquer imagem no container principal
+            ".imgTagWrapper img",  # Imagens nos wrappers
+            "img[data-old-hires]",  # Imagens com versão de alta resolução
+            "#imageBlock img",  # Imagens no bloco de imagens
+            ".a-dynamic-image",  # Imagens dinâmicas
+            ".a-stretch-vertical",  # Imagens esticadas verticalmente
+            ".a-stretch-horizontal"  # Imagens esticadas horizontalmente
+        ]
+
+        # Tenta cada seletor
+        for selector in selectors:
+            try:
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                for element in elements:
+                    # Tenta obter a URL da imagem de diferentes atributos
+                    src = element.get_attribute('src')
+                    data_old_hires = element.get_attribute('data-old-hires')
+                    data_dynamic_image = element.get_attribute('data-a-dynamic-image')
+                    
+                    # Prioriza imagens de alta resolução
+                    if data_old_hires and is_valid_image_url(data_old_hires):
+                        return data_old_hires
+                    
+                    # Tenta a URL normal
+                    if src and is_valid_image_url(src):
+                        return src
+                    
+                    # Tenta extrair do atributo data-a-dynamic-image
+                    if data_dynamic_image:
+                        try:
+                            # O atributo data-a-dynamic-image é um JSON com URLs e dimensões
+                            dynamic_images = json.loads(data_dynamic_image)
+                            # Pega a URL com a maior resolução
+                            largest_url = max(dynamic_images.items(), key=lambda x: x[1][0])[0]
+                            if is_valid_image_url(largest_url):
+                                return largest_url
+                        except:
+                            pass
+
+            except Exception as e:
+                print(f"Erro ao tentar seletor {selector}: {e}")
+                continue
+
+        # Se não encontrou nenhuma imagem válida, tenta extrair do HTML
+        try:
+            html = driver.page_source
+            # Procura por URLs de imagem no HTML
+            img_urls = re.findall(r'https://m\.media-amazon\.com/images/I/[^"\']+\.(?:jpg|jpeg|png)', html)
+            for url in img_urls:
+                if is_valid_image_url(url):
+                    return url
+        except Exception as e:
+            print(f"Erro ao extrair URLs do HTML: {e}")
+
+        return None
+    except Exception as e:
+        print(f"Erro ao buscar imagem alternativa para {product_name}: {e}")
+        return None
+
+def is_valid_image_url(url):
+    """Verifica se a URL da imagem é válida e acessível."""
+    try:
+        # Verifica se é uma URL válida
+        parsed = urlparse(url)
+        if not all([parsed.scheme, parsed.netloc]):
+            return False
+
+        # Verifica se é uma URL da Amazon
+        if 'media-amazon.com' not in parsed.netloc:
+            return False
+
+        # Faz uma requisição HEAD para verificar o tipo de conteúdo
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.head(url, headers=headers, timeout=5)
+        content_type = response.headers.get('content-type', '')
+        
+        # Verifica se é uma imagem
+        if not content_type.startswith('image/'):
+            return False
+
+        # Verifica o tamanho da imagem
+        content_length = int(response.headers.get('content-length', 0))
+        if content_length > 10 * 1024 * 1024:  # 10MB limite do Telegram
+            return False
+
+        return True
+    except Exception as e:
+        print(f"Erro ao validar imagem {url}: {e}")
+        return False
+
 def send_telegram_message(products):
     """Envia os resultados formatados para o Telegram com imagem"""
     TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -59,11 +210,20 @@ def send_telegram_message(products):
         print("Variáveis de ambiente do Telegram não configuradas!")
         return
 
+    # Load previously sent products
+    sent_products = load_sent_products()
+    new_sent_products = []
+
     for product in products:
         try:
             # Verifica campos mínimos obrigatórios
             if not product.get('nome') or not product.get('valor_desconto') or not product.get('link'):
                 print(f"Produto inválido: {product.get('nome')}")
+                continue
+
+            # Check if product was already sent
+            if is_product_already_sent(product['nome'], sent_products):
+                print(f"Produto já enviado anteriormente: {product['nome']}")
                 continue
 
             # Constrói mensagem gradualmente
@@ -83,9 +243,9 @@ def send_telegram_message(products):
             message += f"\n💸 De: {product.get('valor_original')}\n"
             message += f"\n💥 Por apenas: {product['valor_desconto']}\n"
 
-            message += "\n💳 Parcelamentos:"
             if product.get('parcelamento'):
                 try:
+                    message += "\n💳 Parcelamentos:"
                     # Padrão 1: "12x de R$ 46,62 sem juros"
                     padrao1 = re.search(r'(\d+)x de R\$\s*([\d,]+)\s*(.*)', product['parcelamento'])
                     
@@ -113,37 +273,66 @@ def send_telegram_message(products):
                 except Exception as e:
                     print(f"Erro ao processar parcelamento: {str(e)}")
                     message += "\n- Condições de parcelamento no site"
-            else:
-                message += "\n- Não disponível"
+
             # Link final
             message += "\n\n🛒 Garanta agora:"
             message += f"\n🔗 {product['link']}"
 
-            # Envio com imagem ou sem
+            # Verifica e processa a imagem
+            image_url = None
             if product.get('imagem'):
-                url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-                payload = {
-                    'chat_id': CHAT_ID,
-                    'photo': product['imagem'],
-                    'caption': message,
-                    'parse_mode': 'HTML'
-                }
+                if is_valid_image_url(product['imagem']):
+                    image_url = product['imagem']
+                else:
+                    # Tenta obter uma imagem alternativa
+                    image_url = get_alternative_image(driver, product['nome'])
+
+            # Envio com imagem ou sem
+            if image_url:
+                try:
+                    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+                    payload = {
+                        'chat_id': CHAT_ID,
+                        'photo': image_url,
+                        'caption': message,
+                        'parse_mode': 'HTML'
+                    }
+                    response = requests.post(url, data=payload, timeout=10)
+                    response.raise_for_status()
+                except Exception as e:
+                    print(f"Erro ao enviar com imagem, tentando sem imagem: {e}")
+                    # Fallback para envio sem imagem
+                    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+                    payload = {
+                        'chat_id': CHAT_ID,
+                        'text': message,
+                        'parse_mode': 'HTML'
+                    }
+                    response = requests.post(url, data=payload)
+                    response.raise_for_status()
             else:
+                # Envio sem imagem
                 url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
                 payload = {
                     'chat_id': CHAT_ID,
                     'text': message,
                     'parse_mode': 'HTML'
                 }
-            
-            response = requests.post(url, data=payload)
-            response.raise_for_status()
+                response = requests.post(url, data=payload)
+                response.raise_for_status()
             
             print(f"Mensagem enviada: {product['nome']}")
+            # Add product to new sent products list
+            new_sent_products.append(product['nome'])
             time.sleep(3)
 
         except Exception as e:
             print(f"Falha ao enviar {product.get('nome')}: {str(e)}")
+
+    # Update sent products list
+    if new_sent_products:
+        sent_products.extend(new_sent_products)
+        save_sent_products(sent_products)
 
 def generate_affiliate_links(driver, product_links):
     """Gera links de afiliados e coleta dados do produto"""
@@ -281,23 +470,14 @@ def generate_affiliate_links(driver, product_links):
 
     return product_data
 
-def amazon_scraper(driver):
+def amazon_scraper(driver):  # Modificado para receber o driver como parâmetro
     try:
-        # Carrega cookies do .env
-        cookies_env = os.getenv('AMAZON_COOKIES')
-        if not cookies_env:
-            raise ValueError("Variável AMAZON_COOKIES não encontrada no .env")
-            
-        amazon_cookies = json.loads(cookies_env)
-
         driver.get("https://www.amazon.com.br")
-        driver.delete_all_cookies()
+        driver.delete_all_cookies()  # Limpar cookies existentes
 
-        if not isinstance(amazon_cookies, list):
-            raise ValueError("Formato inválido para cookies")
-
-        for cookie in amazon_cookies:
+        for cookie in COOKIES:
             try:
+                # Converte valores booleanos de string para bool
                 secure = cookie.get('secure', False)
                 if isinstance(secure, str):
                     secure = secure.lower() == 'true'
@@ -306,19 +486,13 @@ def amazon_scraper(driver):
                 if isinstance(http_only, str):
                     http_only = http_only.lower() == 'true'
 
-                # Converte expiry para formato numérico se necessário
-                expiry = cookie.get('expiry')
-                if expiry and isinstance(expiry, str):
-                    expiry = int(datetime.fromisoformat(expiry[:-1]).timestamp())
-
                 driver.add_cookie({
                     'name': cookie['name'],
                     'value': cookie['value'],
                     'domain': cookie['domain'],
                     'path': cookie['path'],
                     'secure': secure,
-                    'httpOnly': http_only,
-                    'expiry': expiry
+                    'httpOnly': http_only
                 })
             except Exception as e:
                 print(f"Erro ao adicionar cookie {cookie.get('name')}: {str(e)}")
@@ -331,15 +505,18 @@ def amazon_scraper(driver):
         deals = get_deals_with_discounts(driver)
         
         sorted_deals = sorted(deals, key=lambda x: x['discount'], reverse=True)
-        top_5_links = [deal['link'] for deal in sorted_deals[:5]]
+        top_n_links = [deal['link'] for deal in sorted_deals[:15]]
         
-        return top_5_links
+        return top_n_links
 
     except Exception as e:
         print(f"[Erro no scraper] {e}")
         return []
 
-if __name__ == "__main__":
+def run_scraper():
+    """Função principal que executa o scraper."""
+    print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Iniciando execução do scraper...")
+    
     chrome_options = Options()
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
@@ -359,5 +536,34 @@ if __name__ == "__main__":
             # Envia para o Telegram
             send_telegram_message(products_data)
 
+    except Exception as e:
+        print(f"Erro durante a execução do scraper: {e}")
     finally:
         driver.quit()
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Execução finalizada.")
+
+def schedule_scraper():
+    """Configura e inicia o agendamento do scraper."""
+    print("Iniciando agendamento do scraper...")
+    print("O scraper será executado a cada 1 hora.")
+    
+    # Executa imediatamente na primeira vez
+    run_scraper()
+    
+    # Agenda para executar a cada hora
+    schedule.every(1).hours.do(run_scraper)
+    
+    # Mantém o script rodando
+    while True:
+        try:
+            schedule.run_pending()
+            time.sleep(60)  # Verifica a cada minuto se há tarefas pendentes
+        except KeyboardInterrupt:
+            print("\nEncerrando o scraper...")
+            break
+        except Exception as e:
+            print(f"Erro no agendamento: {e}")
+            time.sleep(60)  # Espera 1 minuto antes de tentar novamente
+
+if __name__ == "__main__":
+    schedule_scraper()
