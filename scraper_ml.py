@@ -293,8 +293,18 @@ def get_product_details(driver, url, max_retries=3):
                         affiliate_link = textarea.get_attribute("value").strip()
                         break
                     time.sleep(random.uniform(0.5, 1.5))
+                
+                if not affiliate_link:
+                    raise Exception("Link de afiliado não gerado")
+                    
             except Exception as e:
-                log(f"Não foi possível extrair link de afiliado: {e}")
+                log(f"Erro ao gerar link de afiliado: {e}")
+                if attempt < max_retries:
+                    log(f"Tentando novamente... (Tentativa {attempt + 1}/{max_retries})")
+                    continue
+                else:
+                    log("Número máximo de tentativas atingido. Pulando produto.")
+                    return None, None, None
 
             # Título do produto
             product_title = driver.find_element(By.CSS_SELECTOR, "h1.ui-pdp-title").text
@@ -438,8 +448,7 @@ def get_product_details(driver, url, max_retries=3):
             if coupon_message:
                 parts.append(coupon_message)
 
-            final_url = affiliate_link or url
-            parts.append(f"🛒 *Garanta agora:*\n🔗 {final_url}")
+            parts.append(f"🛒 *Garanta agora:*\n🔗 {affiliate_link}")
 
             return product_title, "\n\n".join(parts), image_url
 
