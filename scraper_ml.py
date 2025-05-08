@@ -534,12 +534,12 @@ def check_promotions():
 # Loop principal
 print("Bot iniciado.")
 check_promotions()
-schedule.every(1).hours.do(check_promotions)
-print("Agendado para verificar promoções a cada 1 hora.")
+schedule.every(3).hours.do(check_promotions)
+print("Agendado para verificar promoções a cada 3 horas.")
 log("Bot iniciado. Pressione Ctrl+C para parar.")
 try:
     while True:
         schedule.run_pending()
-        time.sleep(3600)
+        time.sleep(10800)
 except KeyboardInterrupt:
     log("Bot encerrado pelo usuário")
