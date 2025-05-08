@@ -56,10 +56,10 @@ if TEST_MODE:
 else:
     HISTORY_FILE = 'promocoes_ml.json'
     print("Salvando em promocoes_ml.json")
-    
+
 MAX_HISTORY_SIZE = 100  # Mantém as últimas promoções
 TOP_N_OFFERS = int(os.getenv("TOP_N_OFFERS_TESTE") if TEST_MODE else os.getenv("TOP_N_OFFERS"))
-SIMILARITY_THRESHOLD = 0.88 # Limiar de similaridade
+SIMILARITY_THRESHOLD = 0.95 # Limiar de similaridade mais restritivo
 
 
 # Lista de URLs fornecida
@@ -78,7 +78,7 @@ OFFER_URLS = [
 ]
 
 
-def is_similar(a: str, b: str, thresh: float = 0.95) -> bool:
+def is_similar(a: str, b: str, thresh: float = SIMILARITY_THRESHOLD) -> bool:
     score = SequenceMatcher(None, a, b).ratio()
     return score >= thresh
     
@@ -248,7 +248,7 @@ def get_top_offers(driver):
             top_category = sorted(category_offers, key=lambda x: x['discount'], reverse=True)[:TOP_N_OFFERS]
             all_offers.extend(top_category)
             
-            log(f"Top 5 coletados: {[item['discount'] for item in top_category]}")
+            log(f"Top {TOP_N_OFFERS} coletados: {[item['discount'] for item in top_category]}")
             
             # Intervalo aleatório entre categorias
             time.sleep(random.uniform(5, 10))
@@ -493,15 +493,12 @@ def check_promotions():
                         log("✅ Enviado ao WhatsApp com sucesso.")
                         sent_promotions.append(product_title)
                         save_promo_history(sent_promotions)
+                        log("Produto salvo no histórico.")
 
                     except subprocess.CalledProcessError as e:
                         log(f"❌ Erro ao executar o script Node.js: {e}")
                 else:
                     log("Falha ao enviar para Telegram - Pulando WhatsApp")
-
-                sent_promotions.append(product_title)
-                save_promo_history(sent_promotions)
-                log("Produto salvo no histórico.")
 
             except Exception as e:
                 log(f"Erro no processamento da promoção: {str(e)}")
