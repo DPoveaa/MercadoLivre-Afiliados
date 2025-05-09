@@ -76,6 +76,48 @@ OFFER_URLS = [
     "https://www.mercadolivre.com.br/ofertas?container_id=MLB783320-1&domain_id=MLB-SUPPLEMENTS#filter_applied=domain_id&filter_position=3&is_recommended_domain=true&origin=scut"
 ]
 
+# Arquivo para armazenar os links já utilizados
+USED_URLS_FILE = 'used_urls_ml.json'
+
+def load_used_urls():
+    """Carrega a lista de URLs já utilizadas do arquivo"""
+    try:
+        with open(USED_URLS_FILE, 'r') as f:
+            return set(json.load(f))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return set()
+
+def save_used_urls(used_urls):
+    """Salva a lista de URLs já utilizadas no arquivo"""
+    with open(USED_URLS_FILE, 'w') as f:
+        json.dump(list(used_urls), f)
+
+def get_rotated_urls():
+    """Retorna 2 URLs aleatórias da lista de ofertas, evitando repetição"""
+    used_urls = load_used_urls()
+    
+    # Se todos os links já foram usados, limpa o histórico
+    if len(used_urls) >= len(OFFER_URLS):
+        log("Todos os links foram utilizados. Reiniciando histórico...")
+        used_urls.clear()
+        save_used_urls(used_urls)
+    
+    # Filtra apenas os links não utilizados
+    available_urls = [url for url in OFFER_URLS if url not in used_urls]
+    
+    # Se não houver links suficientes, usa todos os links disponíveis
+    num_urls = min(2, len(available_urls))
+    
+    # Escolhe aleatoriamente os links
+    selected_urls = random.sample(available_urls, num_urls)
+    
+    # Adiciona os links selecionados ao histórico
+    used_urls.update(selected_urls)
+    save_used_urls(used_urls)
+    
+    log(f"Links selecionados: {len(selected_urls)} de {len(available_urls)} disponíveis")
+    return selected_urls
+
 def is_similar(a: str, b: str, thresh: float = SIMILARITY_THRESHOLD) -> bool:
     score = SequenceMatcher(None, a, b).ratio()
     return score >= thresh
@@ -203,7 +245,10 @@ def get_top_offers(driver):
     """Coleta top 5 ofertas de cada URL na lista"""
     all_offers = []
     
-    for url in OFFER_URLS:
+    # Usa apenas 3 URLs rotacionadas
+    urls_to_process = get_rotated_urls()
+    
+    for url in urls_to_process:
         try:
             log(f"\nAcessando categoria: {url}")
             driver.get(url)
@@ -532,8 +577,8 @@ def check_promotions():
 # Loop principal
 print("Bot iniciado.")
 check_promotions()
-schedule.every(3).hours.do(check_promotions)
-print("Agendado para verificar promoções a cada 3 horas.")
+schedule.every(1).hours.do(check_promotions)
+print("Agendado para verificar promoções a cada 1 hora.")
 log("Bot iniciado. Pressione Ctrl+C para parar.")
 try:
     while True:
