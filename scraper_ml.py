@@ -61,7 +61,6 @@ MAX_HISTORY_SIZE = 200  # Mantém as últimas promoções
 TOP_N_OFFERS = int(os.getenv("TOP_N_OFFERS_TESTE") if TEST_MODE else os.getenv("TOP_N_OFFERS"))
 SIMILARITY_THRESHOLD = 0.95 # Limiar de similaridade mais restritivo
 
-
 # Lista de URLs fornecida
 OFFER_URLS = [
     "https://www.mercadolivre.com.br/ofertas?container_id=MLB779543-1&domain_id=MLB-PERFUMES#filter_applied=domain_id&filter_position=18&is_recommended_domain=false&origin=scut",
@@ -76,7 +75,6 @@ OFFER_URLS = [
     "https://www.mercadolivre.com.br/ofertas?container_id=MLB779362-1&price=0.0-100.0#filter_applied=price&filter_position=6&is_recommended_domain=false&origin=scut",
     "https://www.mercadolivre.com.br/ofertas?container_id=MLB783320-1&domain_id=MLB-SUPPLEMENTS#filter_applied=domain_id&filter_position=3&is_recommended_domain=true&origin=scut"
 ]
-
 
 def is_similar(a: str, b: str, thresh: float = SIMILARITY_THRESHOLD) -> bool:
     score = SequenceMatcher(None, a, b).ratio()
