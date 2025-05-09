@@ -4,6 +4,8 @@ const mime = require('mime-types');
 
 const [,, legenda, nomeGrupo, imageUrl] = process.argv;
 
+console.log(`Procurando grupo com nome: "${nomeGrupo}"`);
+
 const client = new Client({
     authStrategy: new LocalAuth({ dataPath: './auth_data' }),
     puppeteer: {
@@ -28,7 +30,7 @@ client.on('ready', async () => {
         const chats = await client.getChats(); // isso costuma falhar se o WhatsApp ainda está sincronizando
         const grupo = chats.find(chat =>
             chat.isGroup &&
-            chat.name.toLowerCase().trim() === nomeGrupo.toLowerCase().trim()
+            chat.name.toLowerCase().includes(nomeGrupo.toLowerCase().trim())
         );
 
         if (!grupo) throw new Error(`Grupo "${nomeGrupo}" não encontrado`);

@@ -57,7 +57,7 @@ else:
     HISTORY_FILE = 'promocoes_ml.json'
     print("Salvando em promocoes_ml.json")
 
-MAX_HISTORY_SIZE = 100  # Mantém as últimas promoções
+MAX_HISTORY_SIZE = 200  # Mantém as últimas promoções
 TOP_N_OFFERS = int(os.getenv("TOP_N_OFFERS_TESTE") if TEST_MODE else os.getenv("TOP_N_OFFERS"))
 SIMILARITY_THRESHOLD = 0.95 # Limiar de similaridade mais restritivo
 
@@ -396,7 +396,7 @@ def get_product_details(driver, url, max_retries=3):
                             found_others = True
                             captured_others = True
                         elif not found_others:
-                            # salva com juros, mas só se ainda não temos "sem juros"
+                            # salva com juros, mas só se ainda não temos "sem juros"    
                             captured_others = True
                         else:
                             continue
