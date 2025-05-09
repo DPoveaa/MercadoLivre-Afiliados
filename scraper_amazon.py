@@ -25,7 +25,16 @@ load_dotenv()
 
 TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
 
+print("Test Mode:", TEST_MODE)
+
+# Telegram
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID_TESTE") if TEST_MODE else os.getenv("TELEGRAM_GROUP_ID")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID_TESTE") if TEST_MODE else os.getenv("TELEGRAM_CHAT_ID")
+
+# WhatsApp
 WHATSAPP_GROUP_NAME = os.getenv("WHATSAPP_GROUP_NAME_TESTE") if TEST_MODE else os.getenv("WHATSAPP_GROUP_NAME")
+TOP_N_OFFERS = int(os.getenv("TOP_N_OFFERS_TESTE") if TEST_MODE else os.getenv("TOP_N_OFFERS_AMAZON"))
 
 # Load cookies from environment variable
 COOKIES_JSON = os.getenv('AMAZON_COOKIES')
@@ -211,10 +220,8 @@ def is_valid_image_url(url):
 
 def send_telegram_message(products, driver):
     """Envia os resultados formatados para o Telegram com imagem"""
-    TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-    CHAT_ID = os.getenv('TELEGRAM_CHAT_ID_TESTE')
     
-    if not TELEGRAM_TOKEN or not CHAT_ID:
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("Variáveis de ambiente do Telegram não configuradas!")
         return []
 
@@ -297,9 +304,9 @@ def send_telegram_message(products, driver):
             # Envio com imagem ou sem
             if image_url:
                 try:
-                    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+                    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
                     payload = {
-                        'chat_id': CHAT_ID,
+                        'chat_id': TELEGRAM_CHAT_ID,
                         'photo': image_url,
                         'caption': message,
                         'parse_mode': 'Markdown'
@@ -309,9 +316,9 @@ def send_telegram_message(products, driver):
                 except Exception as e:
                     print(f"Erro ao enviar com imagem, tentando sem imagem: {e}")
                     # Fallback para envio sem imagem
-                    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+                    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
                     payload = {
-                        'chat_id': CHAT_ID,
+                        'chat_id': TELEGRAM_CHAT_ID,
                         'text': message,
                         'parse_mode': 'Markdown'
                     }
@@ -319,9 +326,9 @@ def send_telegram_message(products, driver):
                     response.raise_for_status()
             else:
                 # Envio sem imagem
-                url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+                url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
                 payload = {
-                    'chat_id': CHAT_ID,
+                    'chat_id': TELEGRAM_CHAT_ID,
                     'text': message,
                     'parse_mode': 'Markdown'
                 }
@@ -519,7 +526,7 @@ def amazon_scraper(driver):  # Modificado para receber o driver como parâmetro
         deals = get_deals_with_discounts(driver)
         
         sorted_deals = sorted(deals, key=lambda x: x['discount'], reverse=True)
-        top_n_links = [deal['link'] for deal in sorted_deals[:1]]
+        top_n_links = [deal['link'] for deal in sorted_deals[:TOP_N_OFFERS]]
         
         return top_n_links
 
