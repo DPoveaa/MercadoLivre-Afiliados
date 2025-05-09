@@ -119,9 +119,13 @@ def get_deals_with_discounts(driver):
     
     return deals
 
-def get_alternative_image(driver, product_name):
+def get_alternative_image(driver, product_name, product_url):
     """Tenta obter uma imagem alternativa do produto."""
     try:
+        # Navega para a URL do produto
+        driver.get(product_url)
+        time.sleep(2)  # Pequena pausa para garantir que a página carregue
+
         # Lista de seletores CSS para tentar encontrar a imagem
         selectors = [
             "#landingImage",  # Imagem principal
@@ -221,7 +225,7 @@ def is_valid_image_url(url):
 def send_telegram_message(products, driver):
     """Envia os resultados formatados para o Telegram com imagem"""
     
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_GROUP_ID:
         print("Variáveis de ambiente do Telegram não configuradas!")
         return []
 
@@ -243,7 +247,7 @@ def send_telegram_message(products, driver):
 
             # Constrói mensagem gradualmente
             message = "🔵 *Amazon*\n\n"
-            message += f"🔥 *{product['nome']}*\n"
+            message += f"🏷️ *{product['nome']}*\n"
 
             # Adiciona desconto se disponível
             if product.get('desconto_percentual'):
@@ -259,7 +263,7 @@ def send_telegram_message(products, driver):
 
             if product.get('parcelamento'):
                 try:
-                    message += "\n💳 *Parcelamentos:*"
+                    message += "\n\n💳 *Parcelamentos:*"
                     # Padrão 1: "12x de R$ 46,62 sem juros"
                     padrao1 = re.search(r'(\d+)x de R\$\s*([\d,]+)\s*(.*)', product['parcelamento'])
                     
@@ -292,21 +296,21 @@ def send_telegram_message(products, driver):
             message += "\n\n🛒 *Garanta agora:*"
             message += f"\n🔗 {product['link']}"
 
-            # Verifica e processa a imagem
+            # Verifica e processa a imagem específica do produto atual
             image_url = None
             if product.get('imagem'):
                 if is_valid_image_url(product['imagem']):
                     image_url = product['imagem']
                 else:
-                    # Tenta obter uma imagem alternativa
-                    image_url = get_alternative_image(driver, product['nome'])
+                    # Tenta obter uma imagem alternativa para este produto específico
+                    image_url = get_alternative_image(driver, product['nome'], product['link'])
 
             # Envio com imagem ou sem
             if image_url:
                 try:
                     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
                     payload = {
-                        'chat_id': TELEGRAM_CHAT_ID,
+                        'chat_id': TELEGRAM_GROUP_ID,
                         'photo': image_url,
                         'caption': message,
                         'parse_mode': 'Markdown'
@@ -318,7 +322,7 @@ def send_telegram_message(products, driver):
                     # Fallback para envio sem imagem
                     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
                     payload = {
-                        'chat_id': TELEGRAM_CHAT_ID,
+                        'chat_id': TELEGRAM_GROUP_ID,
                         'text': message,
                         'parse_mode': 'Markdown'
                     }
@@ -328,7 +332,7 @@ def send_telegram_message(products, driver):
                 # Envio sem imagem
                 url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
                 payload = {
-                    'chat_id': TELEGRAM_CHAT_ID,
+                    'chat_id': TELEGRAM_GROUP_ID,
                     'text': message,
                     'parse_mode': 'Markdown'
                 }
@@ -413,11 +417,18 @@ def generate_affiliate_links(driver, product_links):
             try:
                 # Preço original
                 original = price_block.find_element(
-                    By.CSS_SELECTOR, "span.a-price.a-text-price span.a-offscreen"
+                    By.CSS_SELECTOR, "span.basisPrice span.a-price span.a-offscreen"
                 ).get_attribute("textContent").strip()
                 product_info['valor_original'] = original
             except:
-                product_info['valor_original'] = product_info['valor_desconto']
+                try:
+                    # Tenta outro seletor alternativo para o preço original
+                    original = price_block.find_element(
+                        By.CSS_SELECTOR, "span.a-size-small.a-color-secondary span.a-price span.a-offscreen"
+                    ).get_attribute("textContent").strip()
+                    product_info['valor_original'] = original
+                except:
+                    product_info['valor_original'] = product_info['valor_desconto']
 
             try:
                 # Percentual de desconto
@@ -558,7 +569,7 @@ def send_whatsapp_message(products, driver):
 
             # Constrói mensagem gradualmente
             message = "🔵 *Amazon*\n\n"
-            message += f"🔥 *{product['nome']}*\n"
+            message += f"🏷️ *{product['nome']}*\n"
 
             # Adiciona desconto se disponível
             if product.get('desconto_percentual'):
@@ -570,11 +581,11 @@ def send_whatsapp_message(products, driver):
 
             # Adiciona preços
             message += f"\n💸 *De:* {product.get('valor_original')}\n"
-            message += f"\n💥 *Por apenas:* {product['valor_desconto']}\n"
+            message += f"\n💥 *Por apenas:* {product['valor_desconto']}"
 
             if product.get('parcelamento'):
                 try:
-                    message += "\n💳 *Parcelamentos:*"
+                    message += "\n\n💳 *Parcelamentos:*"
                     # Padrão 1: "12x de R$ 46,62 sem juros"
                     padrao1 = re.search(r'(\d+)x de R\$\s*([\d,]+)\s*(.*)', product['parcelamento'])
                     
@@ -607,14 +618,14 @@ def send_whatsapp_message(products, driver):
             message += "\n\n🛒 *Garanta agora:*"
             message += f"\n🔗 {product['link']}"
 
-            # Verifica e processa a imagem
+            # Verifica e processa a imagem específica do produto atual
             image_url = None
             if product.get('imagem'):
                 if is_valid_image_url(product['imagem']):
                     image_url = product['imagem']
                 else:
-                    # Tenta obter uma imagem alternativa
-                    image_url = get_alternative_image(driver, product['nome'])
+                    # Tenta obter uma imagem alternativa para este produto específico
+                    image_url = get_alternative_image(driver, product['nome'], product['link'])
 
             # Envia para o WhatsApp
             try:
