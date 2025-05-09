@@ -583,6 +583,6 @@ log("Bot iniciado. Pressione Ctrl+C para parar.")
 try:
     while True:
         schedule.run_pending()
-        time.sleep(10800)
+        time.sleep(3600)
 except KeyboardInterrupt:
     log("Bot encerrado pelo usuário")
