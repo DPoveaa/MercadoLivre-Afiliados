@@ -12,7 +12,7 @@ let qrFoiEscaneadoRecentemente = false;
 const client = new Client({
     authStrategy: new LocalAuth({ dataPath: './auth_data' }),
     puppeteer: {
-        headless: false,
+        headless: true,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',

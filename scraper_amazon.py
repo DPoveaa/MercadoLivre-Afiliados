@@ -1,6 +1,7 @@
 import time
 import os
 import json
+import platform
 from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -9,15 +10,22 @@ from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 import requests
 import re
 from datetime import datetime
 from difflib import SequenceMatcher
 from urllib.parse import urlparse
 import mimetypes
+import subprocess
+
 import schedule
 
 load_dotenv()
+
+TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
+
+WHATSAPP_GROUP_NAME = os.getenv("WHATSAPP_GROUP_NAME_TESTE") if TEST_MODE else os.getenv("WHATSAPP_GROUP_NAME")
 
 # Load cookies from environment variable
 COOKIES_JSON = os.getenv('AMAZON_COOKIES')
@@ -208,7 +216,7 @@ def send_telegram_message(products, driver):
     
     if not TELEGRAM_TOKEN or not CHAT_ID:
         print("Variáveis de ambiente do Telegram não configuradas!")
-        return
+        return []
 
     # Load previously sent products
     sent_products = load_sent_products()
@@ -227,25 +235,24 @@ def send_telegram_message(products, driver):
                 continue
 
             # Constrói mensagem gradualmente
-            message = "🔵 <b>Amazon</b>\n\n"
-            message += f"🔥 {product['nome']}\n"
+            message = "🔵 *Amazon*\n\n"
+            message += f"🔥 *{product['nome']}*\n"
 
             # Adiciona desconto se disponível
             if product.get('desconto_percentual'):
-                message += f"\n📉 Desconto de {product['desconto_percentual']}% OFF\n"
+                message += f"\n📉 *Desconto de {product['desconto_percentual']}% OFF*\n"
 
             # Adiciona avaliação se disponível
             if product.get('avaliacao'):
-                avaliacao = product['avaliacao'].replace(',', '.')
-                message += f"\n⭐ Avaliação: {avaliacao}\n"
+                message += f"\n⭐ *{product['avaliacao']}*\n"
 
             # Adiciona preços
-            message += f"\n💸 De: {product.get('valor_original')}\n"
-            message += f"\n💥 Por apenas: {product['valor_desconto']}\n"
+            message += f"\n💸 *De:* {product.get('valor_original')}\n"
+            message += f"\n💥 *Por apenas:* {product['valor_desconto']}"
 
             if product.get('parcelamento'):
                 try:
-                    message += "\n💳 Parcelamentos:"
+                    message += "\n💳 *Parcelamentos:*"
                     # Padrão 1: "12x de R$ 46,62 sem juros"
                     padrao1 = re.search(r'(\d+)x de R\$\s*([\d,]+)\s*(.*)', product['parcelamento'])
                     
@@ -275,7 +282,7 @@ def send_telegram_message(products, driver):
                     message += "\n- Condições de parcelamento no site"
 
             # Link final
-            message += "\n\n🛒 Garanta agora:"
+            message += "\n\n🛒 *Garanta agora:*"
             message += f"\n🔗 {product['link']}"
 
             # Verifica e processa a imagem
@@ -295,7 +302,7 @@ def send_telegram_message(products, driver):
                         'chat_id': CHAT_ID,
                         'photo': image_url,
                         'caption': message,
-                        'parse_mode': 'HTML'
+                        'parse_mode': 'Markdown'
                     }
                     response = requests.post(url, data=payload, timeout=10)
                     response.raise_for_status()
@@ -306,7 +313,7 @@ def send_telegram_message(products, driver):
                     payload = {
                         'chat_id': CHAT_ID,
                         'text': message,
-                        'parse_mode': 'HTML'
+                        'parse_mode': 'Markdown'
                     }
                     response = requests.post(url, data=payload)
                     response.raise_for_status()
@@ -316,7 +323,7 @@ def send_telegram_message(products, driver):
                 payload = {
                     'chat_id': CHAT_ID,
                     'text': message,
-                    'parse_mode': 'HTML'
+                    'parse_mode': 'Markdown'
                 }
                 response = requests.post(url, data=payload)
                 response.raise_for_status()
@@ -329,10 +336,7 @@ def send_telegram_message(products, driver):
         except Exception as e:
             print(f"Falha ao enviar {product.get('nome')}: {str(e)}")
 
-    # Update sent products list
-    if new_sent_products:
-        sent_products.extend(new_sent_products)
-        save_sent_products(sent_products)
+    return new_sent_products
 
 def generate_affiliate_links(driver, product_links):
     """Gera links de afiliados e coleta dados do produto"""
@@ -435,9 +439,19 @@ def generate_affiliate_links(driver, product_links):
                     product_info['desconto_percentual'] = None
             try:
                 # Avaliação
-                product_info['avaliacao'] = driver.find_element(
+                rating_element = driver.find_element(
                     By.CSS_SELECTOR, "#averageCustomerReviews .a-icon-alt"
-                ).get_attribute("textContent").split()[0].replace(',', '.')
+                )
+                rating = rating_element.get_attribute("textContent").split()[0].replace(',', '.')
+                
+                # Quantidade de avaliações
+                review_count_element = driver.find_element(
+                    By.CSS_SELECTOR, "#acrCustomerReviewText"
+                )
+                review_count = review_count_element.text.strip('()').replace('.', '')
+                
+                # Formata a avaliação sem pontos
+                product_info['avaliacao'] = f"{rating} ({review_count} avaliações)"
             except:
                 pass
             try:
@@ -505,13 +519,118 @@ def amazon_scraper(driver):  # Modificado para receber o driver como parâmetro
         deals = get_deals_with_discounts(driver)
         
         sorted_deals = sorted(deals, key=lambda x: x['discount'], reverse=True)
-        top_n_links = [deal['link'] for deal in sorted_deals[:15]]
+        top_n_links = [deal['link'] for deal in sorted_deals[:1]]
         
         return top_n_links
 
     except Exception as e:
         print(f"[Erro no scraper] {e}")
         return []
+
+def send_whatsapp_message(products, driver):
+    """Envia os resultados formatados para o WhatsApp com imagem"""
+    if not WHATSAPP_GROUP_NAME:
+        print("Variável de ambiente WHATSAPP_GROUP_NAME não configurada!")
+        return []
+
+    # Load previously sent products
+    sent_products = load_sent_products()
+    new_sent_products = []
+
+    for product in products:
+        try:
+            # Verifica campos mínimos obrigatórios
+            if not product.get('nome') or not product.get('valor_desconto') or not product.get('link'):
+                print(f"Produto inválido: {product.get('nome')}")
+                continue
+
+            # Check if product was already sent
+            if is_product_already_sent(product['nome'], sent_products):
+                print(f"Produto já enviado anteriormente: {product['nome']}")
+                continue
+
+            # Constrói mensagem gradualmente
+            message = "🔵 *Amazon*\n\n"
+            message += f"🔥 *{product['nome']}*\n"
+
+            # Adiciona desconto se disponível
+            if product.get('desconto_percentual'):
+                message += f"\n📉 *Desconto de {product['desconto_percentual']}% OFF*\n"
+
+            # Adiciona avaliação se disponível
+            if product.get('avaliacao'):
+                message += f"\n⭐ *{product['avaliacao']}*\n"
+
+            # Adiciona preços
+            message += f"\n💸 *De:* {product.get('valor_original')}\n"
+            message += f"\n💥 *Por apenas:* {product['valor_desconto']}\n"
+
+            if product.get('parcelamento'):
+                try:
+                    message += "\n💳 *Parcelamentos:*"
+                    # Padrão 1: "12x de R$ 46,62 sem juros"
+                    padrao1 = re.search(r'(\d+)x de R\$\s*([\d,]+)\s*(.*)', product['parcelamento'])
+                    
+                    # Padrão 2: "Em até 12x sem juros"
+                    padrao2 = re.search(r'(\d+)x\s*(.*)', product['parcelamento'])
+                    
+                    # Padrão 3: Valor total + parcelamento
+                    padrao3 = re.search(r'.*(\d+)x.*sem juros', product['parcelamento'])
+
+                    if padrao1:
+                        qtd_parcelas = padrao1.group(1)
+                        valor_parcela = f"R$ {padrao1.group(2)}"
+                        status_juros = padrao1.group(3)
+                        message += f"\n- {qtd_parcelas}x de {valor_parcela} {status_juros}"
+                    elif padrao2:
+                        qtd_parcelas = padrao2.group(1)
+                        status_juros = padrao2.group(2)
+                        message += f"\n- Em até {qtd_parcelas}x {status_juros}"
+                    elif padrao3:
+                        qtd_parcelas = padrao3.group(1)
+                        message += f"\n- Em até {qtd_parcelas}x sem juros"
+                    else:
+                        message += "\n- Parcelamento disponível (ver detalhes)"
+                        
+                except Exception as e:
+                    print(f"Erro ao processar parcelamento: {str(e)}")
+                    message += "\n- Condições de parcelamento no site"
+
+            # Link final
+            message += "\n\n🛒 *Garanta agora:*"
+            message += f"\n🔗 {product['link']}"
+
+            # Verifica e processa a imagem
+            image_url = None
+            if product.get('imagem'):
+                if is_valid_image_url(product['imagem']):
+                    image_url = product['imagem']
+                else:
+                    # Tenta obter uma imagem alternativa
+                    image_url = get_alternative_image(driver, product['nome'])
+
+            # Envia para o WhatsApp
+            try:
+                grupo_nome = WHATSAPP_GROUP_NAME
+                args = [
+                    "node",
+                    os.path.join("Whatsapp", "wpp_enviar.js"),
+                    message,
+                    grupo_nome,
+                    image_url or ""
+                ]
+                subprocess.run(args)
+                print(f"✅ Mensagem enviada para WhatsApp: {product['nome']}")
+                new_sent_products.append(product['nome'])
+                time.sleep(3)
+
+            except subprocess.CalledProcessError as e:
+                print(f"❌ Erro ao executar o script Node.js: {e}")
+
+        except Exception as e:
+            print(f"Falha ao enviar {product.get('nome')}: {str(e)}")
+
+    return new_sent_products
 
 def run_scraper():
     """Função principal que executa o scraper."""
@@ -521,8 +640,17 @@ def run_scraper():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--start-maximized")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    chrome_options.add_argument("--headless=new")  # Novo modo headless do Chrome
 
-    service = Service(executable_path="/usr/bin/chromedriver")
+    # Configuração do ChromeDriver baseada no sistema operacional
+    if platform.system() == 'Windows':
+        service = Service(ChromeDriverManager().install())
+    else:
+        service = Service(executable_path="/usr/bin/chromedriver")
+
     driver = webdriver.Chrome(service=service, options=chrome_options)
 
     try:
@@ -531,10 +659,19 @@ def run_scraper():
         
         if deal_links:
             products_data = generate_affiliate_links(driver, deal_links)
-            print("Dados coletados:", products_data)
             
-            # Envia para o Telegram passando o driver
-            send_telegram_message(products_data, driver)
+            # Envia para o WhatsApp e Telegram
+            whatsapp_success = send_whatsapp_message(products_data, driver)
+            telegram_success = send_telegram_message(products_data, driver)
+            
+            # Encontra produtos que foram enviados com sucesso para ambas as plataformas
+            produtos_enviados = set(whatsapp_success) & set(telegram_success)
+            
+            # Salva apenas os produtos que foram enviados com sucesso para ambas as plataformas
+            if produtos_enviados:
+                sent_products = load_sent_products()
+                sent_products.extend(list(produtos_enviados))
+                save_sent_products(sent_products)
 
     except Exception as e:
         print(f"Erro durante a execução do scraper: {e}")
@@ -566,4 +703,4 @@ def schedule_scraper():
             time.sleep(60)  # Espera 1 minuto antes de tentar novamente
 
 if __name__ == "__main__":
-    schedule_scraper()
+    schedule_scraper()  
