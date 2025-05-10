@@ -578,15 +578,53 @@ def check_promotions():
             log("Fechando o navegador...")
             driver.quit()
 
-# Loop principal
-print("Bot iniciado.")
-check_promotions()
-schedule.every(1).hours.do(check_promotions)
-print("Agendado para verificar promoções a cada 1 hora.")
-log("Bot iniciado. Pressione Ctrl+C para parar.")
-try:
+def schedule_scraper():
+    """Configura e inicia o agendamento do scraper."""
+    print("Iniciando agendamento do scraper...")
+    
+    if TEST_MODE:
+        print("Modo de teste ativado - Executando imediatamente e a cada hora")
+        check_promotions()
+        schedule.every(1).hours.do(check_promotions)
+    else:
+        print("Modo normal - Agendando para horários específicos")
+        # Agenda para executar a cada hora, começando às 12:30
+        schedule.every().day.at("12:30").do(check_promotions)
+        schedule.every().day.at("13:30").do(check_promotions)
+        schedule.every().day.at("14:30").do(check_promotions)
+        schedule.every().day.at("15:30").do(check_promotions)
+        schedule.every().day.at("16:30").do(check_promotions)
+        schedule.every().day.at("17:30").do(check_promotions)
+        schedule.every().day.at("18:30").do(check_promotions)
+        schedule.every().day.at("19:30").do(check_promotions)
+        schedule.every().day.at("20:30").do(check_promotions)
+        schedule.every().day.at("21:30").do(check_promotions)
+        schedule.every().day.at("22:30").do(check_promotions)
+        schedule.every().day.at("23:30").do(check_promotions)
+        schedule.every().day.at("00:30").do(check_promotions)
+        schedule.every().day.at("01:30").do(check_promotions)
+        schedule.every().day.at("02:30").do(check_promotions)
+        schedule.every().day.at("03:30").do(check_promotions)
+        schedule.every().day.at("04:30").do(check_promotions)
+        schedule.every().day.at("05:30").do(check_promotions)
+        schedule.every().day.at("06:30").do(check_promotions)
+        schedule.every().day.at("07:30").do(check_promotions)
+        schedule.every().day.at("08:30").do(check_promotions)
+        schedule.every().day.at("09:30").do(check_promotions)
+        schedule.every().day.at("10:30").do(check_promotions)
+        schedule.every().day.at("11:30").do(check_promotions)
+    
+    # Mantém o script rodando
     while True:
-        schedule.run_pending()
-        time.sleep(3600)
-except KeyboardInterrupt:
-    log("Bot encerrado pelo usuário")
+        try:
+            schedule.run_pending()
+            time.sleep(60)  # Verifica a cada minuto se há tarefas pendentes
+        except KeyboardInterrupt:
+            print("\nEncerrando o scraper...")
+            break
+        except Exception as e:
+            print(f"Erro no agendamento: {e}")
+            time.sleep(60)  # Espera 1 minuto antes de tentar novamente
+
+if __name__ == "__main__":
+    schedule_scraper()
