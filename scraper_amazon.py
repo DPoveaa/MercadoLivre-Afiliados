@@ -46,7 +46,11 @@ try:
 except json.JSONDecodeError as e:
     raise ValueError(f"Invalid JSON in AMAZON_COOKIES: {e}")
 
-def is_similar(a: str, b: str, thresh: float = 0.95) -> bool:
+# Configurações gerais
+SIMILARITY_THRESHOLD = 0.95  # Limiar de similaridade mais restritivo
+MAX_HISTORY_SIZE = 200  # Mantém as últimas promoções
+
+def is_similar(a: str, b: str, thresh: float = SIMILARITY_THRESHOLD) -> bool:
     """Compare two strings and return True if they are similar above the threshold."""
     score = SequenceMatcher(None, a, b).ratio()
     return score >= thresh
@@ -57,10 +61,11 @@ def load_sent_products():
         if os.path.exists('produtos_amazon.json'):
             with open('produtos_amazon.json', 'r', encoding='utf-8') as f:
                 products = json.load(f)
-                # Verifica se precisa limpar o arquivo
-                if len(products) >= 30:
-                    print("Limite de 30 produtos atingido. Limpando arquivo...")
-                    return []
+                # Se atingiu o limite, remove os mais antigos
+                if len(products) >= MAX_HISTORY_SIZE:
+                    print(f"Limite de {MAX_HISTORY_SIZE} produtos atingido. Removendo os mais antigos...")
+                    # Remove os produtos mais antigos mantendo apenas os MAX_HISTORY_SIZE mais recentes
+                    products = products[-MAX_HISTORY_SIZE:]
                 return products
         return []
     except Exception as e:
@@ -70,10 +75,11 @@ def load_sent_products():
 def save_sent_products(products):
     """Save the list of sent products to JSON file."""
     try:
-        # Verifica se atingiu o limite antes de salvar
-        if len(products) >= 30:
-            print("Limite de 30 produtos atingido. Limpando arquivo...")
-            products = []
+        # Se atingiu o limite, remove os mais antigos
+        if len(products) > MAX_HISTORY_SIZE:
+            print(f"Limite de {MAX_HISTORY_SIZE} produtos atingido. Removendo os mais antigos...")
+            # Remove os produtos mais antigos mantendo apenas os MAX_HISTORY_SIZE mais recentes
+            products = products[-MAX_HISTORY_SIZE:]
             
         with open('produtos_amazon.json', 'w', encoding='utf-8') as f:
             json.dump(products, f, ensure_ascii=False, indent=2)
@@ -346,6 +352,11 @@ def send_telegram_message(products, driver):
 
         except Exception as e:
             print(f"Falha ao enviar {product.get('nome')}: {str(e)}")
+
+    # Salva os novos produtos enviados
+    if new_sent_products:
+        sent_products.extend(new_sent_products)
+        save_sent_products(sent_products)
 
     return new_sent_products
 
@@ -647,6 +658,11 @@ def send_whatsapp_message(products, driver):
 
         except Exception as e:
             print(f"Falha ao enviar {product.get('nome')}: {str(e)}")
+
+    # Salva os novos produtos enviados
+    if new_sent_products:
+        sent_products.extend(new_sent_products)
+        save_sent_products(sent_products)
 
     return new_sent_products
 
