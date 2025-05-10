@@ -456,6 +456,7 @@ def get_product_details(driver, url, max_retries=3):
                         .replace("com cartão Mercado Pago", "")
                         .replace("com estes cartões", "")
                         .replace("Ou até ", "")
+                        .replace("com acréscimo", "com juros")
                         .strip()
                     )
 

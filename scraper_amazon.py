@@ -284,11 +284,11 @@ def send_telegram_message(products, driver):
                     if padrao1:
                         qtd_parcelas = padrao1.group(1)
                         valor_parcela = f"R$ {padrao1.group(2)}"
-                        status_juros = padrao1.group(3)
+                        status_juros = padrao1.group(3).replace("com acréscimo", "com juros")
                         message += f"\n- {qtd_parcelas}x de {valor_parcela} {status_juros}"
                     elif padrao2:
                         qtd_parcelas = padrao2.group(1)
-                        status_juros = padrao2.group(2)
+                        status_juros = padrao2.group(2).replace("com acréscimo", "com juros")
                         message += f"\n- Em até {qtd_parcelas}x {status_juros}"
                     elif padrao3:
                         qtd_parcelas = padrao3.group(1)
@@ -411,13 +411,39 @@ def generate_affiliate_links(driver, product_links):
 
             # 2. COLETA PREÇO COM DESCONTO (OBRIGATÓRIO)
             try:
-                price_block = WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.ID, "corePriceDisplay_desktop_feature_div"))
-                )
-                whole = price_block.find_element(By.CSS_SELECTOR, "span.a-price-whole").text.strip()
-                fraction = price_block.find_element(By.CSS_SELECTOR, "span.a-price-fraction").text.strip()
-                price_str = f"R${whole},{fraction}"
-                product_info['valor_desconto'] = format_price(price_str)
+                # Primeiro tenta o formato padrão
+                try:
+                    price_block = WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((By.ID, "corePriceDisplay_desktop_feature_div"))
+                    )
+                    whole = price_block.find_element(By.CSS_SELECTOR, "span.a-price-whole").text.strip()
+                    fraction = price_block.find_element(By.CSS_SELECTOR, "span.a-price-fraction").text.strip()
+                    price_str = f"R${whole},{fraction}"
+                    product_info['valor_desconto'] = format_price(price_str)
+                except:
+                    # Se falhar, tenta o formato de assinatura
+                    try:
+                        price_block = WebDriverWait(driver, 10).until(
+                            EC.presence_of_element_located((By.ID, "subscriptionPrice"))
+                        )
+                        whole = price_block.find_element(By.CSS_SELECTOR, "span.a-price-whole").text.strip()
+                        fraction = price_block.find_element(By.CSS_SELECTOR, "span.a-price-fraction").text.strip()
+                        price_str = f"R${whole},{fraction}"
+                        product_info['valor_desconto'] = format_price(price_str)
+                    except:
+                        # Se ambos falharem, tenta pegar o preço do elemento aok-offscreen
+                        try:
+                            price_text = driver.find_element(By.CSS_SELECTOR, "span.aok-offscreen").text
+                            price_match = re.search(r'R\$\s*(\d+),(\d+)', price_text)
+                            if price_match:
+                                whole = price_match.group(1)
+                                fraction = price_match.group(2)
+                                price_str = f"R${whole},{fraction}"
+                                product_info['valor_desconto'] = format_price(price_str)
+                            else:
+                                raise Exception("Formato de preço não reconhecido")
+                        except:
+                            raise Exception("Não foi possível encontrar o preço do produto")
             except Exception as e:
                 print(f"Erro no preço: {str(e)}")
                 continue  # Aborta se não encontrar preço
@@ -626,11 +652,11 @@ def send_whatsapp_message(products, driver):
                     if padrao1:
                         qtd_parcelas = padrao1.group(1)
                         valor_parcela = f"R$ {padrao1.group(2)}"
-                        status_juros = padrao1.group(3)
+                        status_juros = padrao1.group(3).replace("com acréscimo", "com juros")
                         message += f"\n- {qtd_parcelas}x de {valor_parcela} {status_juros}"
                     elif padrao2:
                         qtd_parcelas = padrao2.group(1)
-                        status_juros = padrao2.group(2)
+                        status_juros = padrao2.group(2).replace("com acréscimo", "com juros")
                         message += f"\n- Em até {qtd_parcelas}x {status_juros}"
                     elif padrao3:
                         qtd_parcelas = padrao3.group(1)
