@@ -278,17 +278,21 @@ def get_top_offers(driver):
             for card in cards:
                 try:
                     discount = card.find_element(By.CSS_SELECTOR, '.andes-money-amount__discount').text.replace('% OFF', '')
-                    link = card.find_element(By.CSS_SELECTOR, 'a.poly-component__title').get_attribute('href')
-                    title = card.find_element(By.CSS_SELECTOR, 'a.poly-component__title').text.strip()
+                    discount_value = float(discount)
                     
-                    # Verifica se já existe um produto similar na lista atual
-                    if not any(is_similar(title, offer['title']) for offer in category_offers):
-                        category_offers.append({
-                            'discount': float(discount),
-                            'url': link,
-                            'title': title,
-                            'category': url.split('domain_id=')[1].split('&')[0] if 'domain_id=' in url else 'unknown'
-                        })
+                    # Só adiciona se o desconto for maior que 10%
+                    if discount_value > 20:
+                        link = card.find_element(By.CSS_SELECTOR, 'a.poly-component__title').get_attribute('href')
+                        title = card.find_element(By.CSS_SELECTOR, 'a.poly-component__title').text.strip()
+                        
+                        # Verifica se já existe um produto similar na lista atual
+                        if not any(is_similar(title, offer['title']) for offer in category_offers):
+                            category_offers.append({
+                                'discount': discount_value,
+                                'url': link,
+                                'title': title,
+                                'category': url.split('domain_id=')[1].split('&')[0] if 'domain_id=' in url else 'unknown'
+                            })
                 except Exception as e:
                     continue
             

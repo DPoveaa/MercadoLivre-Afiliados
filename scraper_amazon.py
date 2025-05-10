@@ -111,14 +111,16 @@ def get_deals_with_discounts(driver):
             discount_text = discount_element.text.strip()
             discount = int(discount_text.split('%')[0].strip())  # Extrai o valor numérico
             
-            # Extrai o link
-            link_element = card.find_element(
-                By.CSS_SELECTOR, 
-                'a[data-testid="product-card-link"]'
-            )
-            link = link_element.get_attribute('href')
-            
-            deals.append({'discount': discount, 'link': link})
+            # Só adiciona se o desconto for maior que 10%
+            if discount > 20:
+                # Extrai o link
+                link_element = card.find_element(
+                    By.CSS_SELECTOR, 
+                    'a[data-testid="product-card-link"]'
+                )
+                link = link_element.get_attribute('href')
+                
+                deals.append({'discount': discount, 'link': link})
             
         except Exception as e:
             print(f"[Erro] Não foi possível extrair dados do produto: {e}")
@@ -360,6 +362,20 @@ def send_telegram_message(products, driver):
 
     return new_sent_products
 
+def format_price(price_str):
+    """Formata o preço adicionando pontos para separar milhares e removendo espaços extras."""
+    try:
+        # Remove R$, espaços e converte vírgula para ponto
+        price_str = price_str.replace('R$', '').replace(' ', '').replace('.', '').replace(',', '.')
+        # Converte para float
+        price_float = float(price_str)
+        # Formata com 2 casas decimais e adiciona pontos para milhares
+        formatted = f"R${price_float:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+        return formatted
+    except Exception as e:
+        print(f"Erro ao formatar preço {price_str}: {e}")
+        return price_str
+
 def generate_affiliate_links(driver, product_links):
     """Gera links de afiliados e coleta dados do produto"""
     product_data = []
@@ -398,9 +414,10 @@ def generate_affiliate_links(driver, product_links):
                 price_block = WebDriverWait(driver, 10).until(
                     EC.presence_of_element_located((By.ID, "corePriceDisplay_desktop_feature_div"))
                 )
-                whole = price_block.find_element(By.CSS_SELECTOR, "span.a-price-whole").text.strip().replace('.', '')
+                whole = price_block.find_element(By.CSS_SELECTOR, "span.a-price-whole").text.strip()
                 fraction = price_block.find_element(By.CSS_SELECTOR, "span.a-price-fraction").text.strip()
-                product_info['valor_desconto'] = f"R$ {whole},{fraction}"
+                price_str = f"R${whole},{fraction}"
+                product_info['valor_desconto'] = format_price(price_str)
             except Exception as e:
                 print(f"Erro no preço: {str(e)}")
                 continue  # Aborta se não encontrar preço
@@ -430,14 +447,14 @@ def generate_affiliate_links(driver, product_links):
                 original = price_block.find_element(
                     By.CSS_SELECTOR, "span.basisPrice span.a-price span.a-offscreen"
                 ).get_attribute("textContent").strip()
-                product_info['valor_original'] = original
+                product_info['valor_original'] = format_price(original)
             except:
                 try:
                     # Tenta outro seletor alternativo para o preço original
                     original = price_block.find_element(
                         By.CSS_SELECTOR, "span.a-size-small.a-color-secondary span.a-price span.a-offscreen"
                     ).get_attribute("textContent").strip()
-                    product_info['valor_original'] = original
+                    product_info['valor_original'] = format_price(original)
                 except:
                     product_info['valor_original'] = product_info['valor_desconto']
 
