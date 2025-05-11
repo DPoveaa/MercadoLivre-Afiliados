@@ -57,8 +57,9 @@ else:
     HISTORY_FILE = 'promocoes_ml.json'
     print("Salvando em promocoes_ml.json")
 
-MAX_HISTORY_SIZE = 200  # Mantém as últimas promoções
 TOP_N_OFFERS = int(os.getenv("TOP_N_OFFERS_TESTE") if TEST_MODE else os.getenv("TOP_N_OFFERS"))
+
+MAX_HISTORY_SIZE = 100  # Mantém as últimas promoções
 SIMILARITY_THRESHOLD = 0.95 # Limiar de similaridade mais restritivo
 
 # Lista de URLs fornecida

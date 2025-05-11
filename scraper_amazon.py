@@ -48,7 +48,12 @@ except json.JSONDecodeError as e:
 
 # Configurações gerais
 SIMILARITY_THRESHOLD = 0.95  # Limiar de similaridade mais restritivo
-MAX_HISTORY_SIZE = 200  # Mantém as últimas promoções
+MAX_HISTORY_SIZE = 100  # Mantém as últimas promoções
+
+def log(message):
+    """Função para logging com timestamp"""
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp}] {message}")
 
 def is_similar(a: str, b: str, thresh: float = SIMILARITY_THRESHOLD) -> bool:
     """Compare two strings and return True if they are similar above the threshold."""
@@ -594,6 +599,27 @@ def amazon_scraper(driver):  # Modificado para receber o driver como parâmetro
         print(f"[Erro no scraper] {e}")
         return []
 
+def run_whatsapp_auth():
+    """Executa o processo de autenticação do WhatsApp"""
+    log("Iniciando autenticação do WhatsApp...")
+    auth_args = [
+        "node",
+        os.path.join("Whatsapp", "wpp_auth.js")
+    ]
+    
+    try:
+        # Executa o auth e aguarda conclusão
+        subprocess.run(auth_args, check=True, timeout=300)  # 10 minutos para autenticar
+        log("Autenticação do WhatsApp concluída com sucesso!")
+        
+    except subprocess.CalledProcessError as e:
+        log(f"Falha na autenticação: {str(e)}")
+        raise Exception("Erro crítico na autenticação do WhatsApp")
+        
+    except subprocess.TimeoutExpired:
+        log("Tempo excedido para autenticação do WhatsApp")
+        raise Exception("Timeout na autenticação")
+
 def send_whatsapp_message(products, driver):
     """Envia os resultados formatados para o WhatsApp com imagem"""
     if not WHATSAPP_GROUP_NAME:
@@ -726,6 +752,9 @@ def run_scraper():
         
         if deal_links:
             products_data = generate_affiliate_links(driver, deal_links)
+            
+            # Executa autenticação do WhatsApp
+            run_whatsapp_auth()
             
             # Envia para o WhatsApp e Telegram
             whatsapp_success = send_whatsapp_message(products_data, driver)
