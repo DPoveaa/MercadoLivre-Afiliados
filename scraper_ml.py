@@ -545,12 +545,29 @@ def check_promotions():
                         grupo_nome,
                         image_url or ""
                     ]
-                    result = subprocess.run(args, capture_output=True, text=True)
+                    log("Iniciando envio para WhatsApp...")
+                    result = subprocess.run(args, capture_output=True, text=True, timeout=60)
+                    
                     if result.returncode == 0:
                         whatsapp_success = True
                         log("✅ Enviado ao WhatsApp com sucesso.")
                     else:
-                        log(f"❌ Erro ao enviar para WhatsApp: {result.stderr}")
+                        error_msg = result.stderr.strip() if result.stderr else "Erro desconhecido"
+                        log(f"❌ Erro ao enviar para WhatsApp: {error_msg}")
+                        
+                        # Se o erro indicar problema de autenticação, tenta reautenticar
+                        if "AUTH ERROR" in error_msg or "DISCONNECTED" in error_msg:
+                            log("Tentando reautenticar WhatsApp...")
+                            run_whatsapp_auth()
+                            # Tenta enviar novamente após autenticação
+                            result = subprocess.run(args, capture_output=True, text=True, timeout=60)
+                            if result.returncode == 0:
+                                whatsapp_success = True
+                                log("✅ Enviado ao WhatsApp com sucesso após reautenticação.")
+                            else:
+                                log(f"❌ Falha no segundo envio para WhatsApp: {result.stderr}")
+                except subprocess.TimeoutExpired:
+                    log("❌ Timeout ao enviar para WhatsApp")
                 except subprocess.CalledProcessError as e:
                     log(f"❌ Erro ao executar o script Node.js do WhatsApp: {e}")
                 except Exception as e:

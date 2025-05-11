@@ -14,26 +14,56 @@ const client = new Client({
     }
 });
 
+let isAuthenticated = false;
+let isReady = false;
+
 client.on('authenticated', () => {
     console.log('[AUTH] Autenticado com sucesso');
+    isAuthenticated = true;
 });
 
 client.on('auth_failure', msg => {
     console.error('[AUTH ERROR]', msg);
+    process.exit(1);
 });
 
 client.on('ready', async () => {
-    try {
-        console.log('[READY] Cliente pronto! Aguardando sincronização...');
-        await new Promise(resolve => setTimeout(resolve, 3000)); // espera 3 segundos
+    console.log('[READY] Cliente pronto! Aguardando sincronização...');
+    isReady = true;
+});
 
-        const chats = await client.getChats(); // isso costuma falhar se o WhatsApp ainda está sincronizando
+client.on('disconnected', (reason) => {
+    console.error('[DISCONNECTED]', reason);
+    process.exit(1);
+});
+
+async function waitForAuthentication(timeout = 30000) {
+    const startTime = Date.now();
+    while (!isAuthenticated && !isReady) {
+        if (Date.now() - startTime > timeout) {
+            throw new Error('Timeout aguardando autenticação');
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+}
+
+async function sendMessage() {
+    try {
+        // Aguarda autenticação
+        await waitForAuthentication();
+        
+        // Aguarda sincronização
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        const chats = await client.getChats();
         const grupo = chats.find(chat =>
             chat.isGroup &&
             chat.name.toLowerCase().includes(nomeGrupo.toLowerCase().trim())
         );
 
-        if (!grupo) throw new Error(`Grupo "${nomeGrupo}" não encontrado`);
+        if (!grupo) {
+            throw new Error(`Grupo "${nomeGrupo}" não encontrado`);
+        }
 
         const chat = await client.getChatById(grupo.id._serialized);
 
@@ -60,6 +90,7 @@ client.on('ready', async () => {
         console.log('Mensagem enviada com sucesso!');
     } catch (error) {
         console.error('Erro:', error.message);
+        process.exit(1);
     } finally {
         setTimeout(async () => {
             try {
@@ -70,8 +101,7 @@ client.on('ready', async () => {
             }
         }, 2000);
     }
-    
-});
+}
 
 process.on('uncaughtException', (err) => {
     console.error('❌ Uncaught Exception:', err);
@@ -83,5 +113,9 @@ process.on('unhandledRejection', (reason, promise) => {
     process.exit(1);
 });
 
-
-client.initialize();
+client.initialize().then(() => {
+    sendMessage();
+}).catch(err => {
+    console.error('Erro ao inicializar cliente:', err);
+    process.exit(1);
+});
