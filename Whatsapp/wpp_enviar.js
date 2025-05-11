@@ -55,39 +55,61 @@ async function sendMessage() {
         // Aguarda sincronização
         await new Promise(resolve => setTimeout(resolve, 5000));
 
-        const chats = await client.getChats();
-        const grupo = chats.find(chat =>
-            chat.isGroup &&
-            chat.name.toLowerCase().includes(nomeGrupo.toLowerCase().trim())
-        );
-
-        if (!grupo) {
-            throw new Error(`Grupo "${nomeGrupo}" não encontrado`);
-        }
-
-        const chat = await client.getChatById(grupo.id._serialized);
-
-        if (imageUrl) {
+        // Aguarda o cliente estar completamente pronto
+        let attempts = 0;
+        const maxAttempts = 10;
+        
+        while (attempts < maxAttempts) {
             try {
-                const res = await fetch(imageUrl);
-                if (!res.ok) throw new Error(`Falha ao buscar imagem (${res.status})`);
+                const chats = await client.getChats();
+                if (chats) {
+                    const grupo = chats.find(chat =>
+                        chat.isGroup &&
+                        chat.name.toLowerCase().includes(nomeGrupo.toLowerCase().trim())
+                    );
 
-                const buffer = await res.buffer();
-                const media = new MessageMedia(
-                    res.headers.get('content-type') || mime.lookup(imageUrl),
-                    buffer.toString('base64'),
-                    'promocao.jpg'
-                );
-                await chat.sendMessage(media, { caption: legenda });
-            } catch (imgErr) {
-                console.error('Erro ao enviar imagem:', imgErr.message);
-                await chat.sendMessage(legenda); // fallback para texto
+                    if (!grupo) {
+                        throw new Error(`Grupo "${nomeGrupo}" não encontrado`);
+                    }
+
+                    const chat = await client.getChatById(grupo.id._serialized);
+
+                    if (imageUrl) {
+                        try {
+                            const res = await fetch(imageUrl);
+                            if (!res.ok) throw new Error(`Falha ao buscar imagem (${res.status})`);
+
+                            const buffer = await res.buffer();
+                            const media = new MessageMedia(
+                                res.headers.get('content-type') || mime.lookup(imageUrl),
+                                buffer.toString('base64'),
+                                'promocao.jpg'
+                            );
+                            await chat.sendMessage(media, { caption: legenda });
+                        } catch (imgErr) {
+                            console.error('Erro ao enviar imagem:', imgErr.message);
+                            await chat.sendMessage(legenda); // fallback para texto
+                        }
+                    } else {
+                        await chat.sendMessage(legenda);
+                    }
+
+                    console.log('Mensagem enviada com sucesso!');
+                    break;
+                }
+            } catch (error) {
+                if (error.message.includes('getChats')) {
+                    attempts++;
+                    if (attempts >= maxAttempts) {
+                        throw new Error('Não foi possível acessar os chats após várias tentativas');
+                    }
+                    console.log(`Tentativa ${attempts} de ${maxAttempts} para acessar os chats...`);
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                } else {
+                    throw error;
+                }
             }
-        } else {
-            await chat.sendMessage(legenda);
         }
-
-        console.log('Mensagem enviada com sucesso!');
     } catch (error) {
         console.error('Erro:', error.message);
         process.exit(1);
