@@ -58,8 +58,8 @@ def is_similar(a: str, b: str, thresh: float = SIMILARITY_THRESHOLD) -> bool:
 def load_sent_products():
     """Load the list of previously sent products from JSON file."""
     try:
-        if os.path.exists('produtos_amazon.json'):
-            with open('produtos_amazon.json', 'r', encoding='utf-8') as f:
+        if os.path.exists('promocoes_amazon.json'):
+            with open('promocoes_amazon.json', 'r', encoding='utf-8') as f:
                 products = json.load(f)
                 # Se atingiu o limite, remove os mais antigos
                 if len(products) >= MAX_HISTORY_SIZE:
@@ -81,7 +81,7 @@ def save_sent_products(products):
             # Remove os produtos mais antigos mantendo apenas os MAX_HISTORY_SIZE mais recentes
             products = products[-MAX_HISTORY_SIZE:]
             
-        with open('produtos_amazon.json', 'w', encoding='utf-8') as f:
+        with open('promocoes_amazon.json', 'w', encoding='utf-8') as f:
             json.dump(products, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"Erro ao salvar produtos enviados: {e}")
