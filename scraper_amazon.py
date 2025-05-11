@@ -249,7 +249,7 @@ def send_telegram_message(products, driver):
                 continue
 
             # Check if product was already sent
-            if is_product_already_sent(product['nome'], sent_products):
+            if not TEST_MODE and is_product_already_sent(product['nome'], sent_products):
                 print(f"Produto já enviado anteriormente: {product['nome']}")
                 continue
 
@@ -356,9 +356,11 @@ def send_telegram_message(products, driver):
             print(f"Falha ao enviar {product.get('nome')}: {str(e)}")
 
     # Salva os novos produtos enviados
-    if new_sent_products:
+    if new_sent_products and not TEST_MODE:
         sent_products.extend(new_sent_products)
         save_sent_products(sent_products)
+    elif TEST_MODE:
+        print("⚠️ Modo teste ativado - Produtos não serão salvos no histórico")
 
     return new_sent_products
 
@@ -617,7 +619,7 @@ def send_whatsapp_message(products, driver):
                 continue
 
             # Check if product was already sent
-            if is_product_already_sent(product['nome'], sent_products):
+            if not TEST_MODE and is_product_already_sent(product['nome'], sent_products):
                 print(f"Produto já enviado anteriormente: {product['nome']}")
                 continue
 
@@ -703,9 +705,11 @@ def send_whatsapp_message(products, driver):
             print(f"Falha ao enviar {product.get('nome')}: {str(e)}")
 
     # Salva os novos produtos enviados
-    if new_sent_products:
+    if new_sent_products and not TEST_MODE:
         sent_products.extend(new_sent_products)
         save_sent_products(sent_products)
+    elif TEST_MODE:
+        print("⚠️ Modo teste ativado - Produtos não serão salvos no histórico")
 
     return new_sent_products
 
@@ -821,10 +825,12 @@ def run_scraper():
                     print(f"❌ Erro ao processar produto {product.get('nome')}: {str(e)}")
             
             # Salva apenas os produtos que foram realmente enviados
-            if successfully_sent:
+            if successfully_sent and not TEST_MODE:
                 sent_products.extend(successfully_sent)
                 save_sent_products(sent_products)
                 print(f"✅ {len(successfully_sent)} produtos salvos no histórico")
+            elif TEST_MODE:
+                print("⚠️ Modo teste ativado - Produtos não serão salvos no histórico")
 
     except Exception as e:
         print(f"Erro durante a execução do scraper: {e}")

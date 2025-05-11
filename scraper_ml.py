@@ -594,9 +594,12 @@ def check_promotions():
 
                 # Se pelo menos um dos envios foi bem sucedido, salva no histórico
                 if whatsapp_success or telegram_success:
-                    sent_promotions.append(product_title)
-                    save_promo_history(sent_promotions)
-                    log("Produto salvo no histórico.")
+                    if not TEST_MODE:
+                        sent_promotions.append(product_title)
+                        save_promo_history(sent_promotions)
+                        log("Produto salvo no histórico.")
+                    else:
+                        log("⚠️ Modo teste ativado - Produto não será salvo no histórico")
                 else:
                     log("❌ Falha ao enviar para ambos os canais - Não salvando no histórico")
 
