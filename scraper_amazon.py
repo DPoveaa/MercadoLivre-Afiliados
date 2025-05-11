@@ -355,13 +355,6 @@ def send_telegram_message(products, driver):
         except Exception as e:
             print(f"Falha ao enviar {product.get('nome')}: {str(e)}")
 
-    # Salva os novos produtos enviados apenas se não estiver em modo teste
-    if new_sent_products and not TEST_MODE:
-        sent_products.extend(new_sent_products)
-        save_sent_products(sent_products)
-    elif TEST_MODE:
-        print("⚠️ Modo teste ativado - Produtos não serão salvos no histórico")
-
     return new_sent_products
 
 def format_price(price_str):
@@ -703,13 +696,6 @@ def send_whatsapp_message(products, driver):
 
         except Exception as e:
             print(f"Falha ao enviar {product.get('nome')}: {str(e)}")
-
-    # Salva os novos produtos enviados apenas se não estiver em modo teste
-    if new_sent_products and not TEST_MODE:
-        sent_products.extend(new_sent_products)
-        save_sent_products(sent_products)
-    elif TEST_MODE:
-        print("⚠️ Modo teste ativado - Produtos não serão salvos no histórico")
 
     return new_sent_products
 
