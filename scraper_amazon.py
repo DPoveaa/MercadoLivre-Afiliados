@@ -249,7 +249,7 @@ def send_telegram_message(products, driver):
                 continue
 
             # Check if product was already sent
-            if not TEST_MODE and is_product_already_sent(product['nome'], sent_products):
+            if is_product_already_sent(product['nome'], sent_products):
                 print(f"Produto já enviado anteriormente: {product['nome']}")
                 continue
 
@@ -355,7 +355,7 @@ def send_telegram_message(products, driver):
         except Exception as e:
             print(f"Falha ao enviar {product.get('nome')}: {str(e)}")
 
-    # Salva os novos produtos enviados
+    # Salva os novos produtos enviados apenas se não estiver em modo teste
     if new_sent_products and not TEST_MODE:
         sent_products.extend(new_sent_products)
         save_sent_products(sent_products)
@@ -619,7 +619,7 @@ def send_whatsapp_message(products, driver):
                 continue
 
             # Check if product was already sent
-            if not TEST_MODE and is_product_already_sent(product['nome'], sent_products):
+            if is_product_already_sent(product['nome'], sent_products):
                 print(f"Produto já enviado anteriormente: {product['nome']}")
                 continue
 
@@ -704,7 +704,7 @@ def send_whatsapp_message(products, driver):
         except Exception as e:
             print(f"Falha ao enviar {product.get('nome')}: {str(e)}")
 
-    # Salva os novos produtos enviados
+    # Salva os novos produtos enviados apenas se não estiver em modo teste
     if new_sent_products and not TEST_MODE:
         sent_products.extend(new_sent_products)
         save_sent_products(sent_products)
@@ -741,94 +741,19 @@ def run_scraper():
         if deal_links:
             products_data = generate_affiliate_links(driver, deal_links)
             
-            # Carrega produtos já enviados
-            sent_products = load_sent_products()
+            # Envia para o WhatsApp e Telegram
+            whatsapp_success = send_whatsapp_message(products_data, driver)
+            telegram_success = send_telegram_message(products_data, driver)
             
-            # Lista para armazenar produtos que foram realmente enviados
-            successfully_sent = []
+            # Encontra produtos que foram enviados com sucesso para ambas as plataformas
+            produtos_enviados = set(whatsapp_success) & set(telegram_success)
             
-            for product in products_data:
-                try:
-                    # Verifica se o produto já foi enviado
-                    if is_product_already_sent(product['nome'], sent_products):
-                        print(f"Produto já enviado anteriormente: {product['nome']}")
-                        continue
-                    
-                    # Tenta enviar para WhatsApp
-                    whatsapp_success = False
-                    try:
-                        grupo_nome = WHATSAPP_GROUP_NAME
-                        args = [
-                            "node",
-                            os.path.join("Whatsapp", "wpp_enviar.js"),
-                            message,
-                            grupo_nome,
-                            image_url or ""
-                        ]
-                        result = subprocess.run(args, capture_output=True, text=True, timeout=60)
-                        whatsapp_success = result.returncode == 0
-                        if whatsapp_success:
-                            print(f"✅ Mensagem enviada para WhatsApp: {product['nome']}")
-                        else:
-                            print(f"❌ Falha ao enviar para WhatsApp: {result.stderr}")
-                    except Exception as e:
-                        print(f"❌ Erro ao enviar para WhatsApp: {str(e)}")
-                    
-                    # Tenta enviar para Telegram
-                    telegram_success = False
-                    try:
-                        # Constrói mensagem
-                        message = "🔵 *Amazon*\n\n"
-                        message += f"🏷️ *{product['nome']}*\n"
-                        if product.get('desconto_percentual'):
-                            message += f"\n📉 *Desconto de {product['desconto_percentual']}% OFF*\n"
-                        if product.get('avaliacao'):
-                            message += f"\n⭐ *{product['avaliacao']}*\n"
-                        message += f"\n💸 *De:* {product.get('valor_original')}\n"
-                        message += f"\n💥 *Por apenas:* {product['valor_desconto']}"
-                        if product.get('parcelamento'):
-                            message += f"\n\n💳 *Parcelamentos:*\n{product['parcelamento']}"
-                        message += f"\n\n🛒 *Garanta agora:*\n🔗 {product['link']}"
-                        
-                        # Tenta enviar com imagem
-                        image_url = None
-                        if product.get('imagem'):
-                            if is_valid_image_url(product['imagem']):
-                                image_url = product['imagem']
-                            else:
-                                image_url = get_alternative_image(driver, product['nome'], product['link'])
-                        
-                        telegram_success = send_telegram_message(
-                            message=message,
-                            image_url=image_url,
-                            bot_token=TELEGRAM_BOT_TOKEN,
-                            chat_id=TELEGRAM_GROUP_ID
-                        )
-                        
-                        if telegram_success:
-                            print(f"✅ Mensagem enviada para Telegram: {product['nome']}")
-                        else:
-                            print(f"❌ Falha ao enviar para Telegram: {product['nome']}")
-                    except Exception as e:
-                        print(f"❌ Erro ao enviar para Telegram: {str(e)}")
-                    
-                    # Só adiciona à lista de enviados se pelo menos um dos envios foi bem sucedido
-                    if whatsapp_success or telegram_success:
-                        successfully_sent.append(product['nome'])
-                        print(f"✅ Produto enviado com sucesso para pelo menos um canal: {product['nome']}")
-                    else:
-                        print(f"❌ Falha ao enviar produto para ambos os canais: {product['nome']}")
-                    
-                    time.sleep(3)  # Pausa entre envios
-                    
-                except Exception as e:
-                    print(f"❌ Erro ao processar produto {product.get('nome')}: {str(e)}")
-            
-            # Salva apenas os produtos que foram realmente enviados
-            if successfully_sent and not TEST_MODE:
-                sent_products.extend(successfully_sent)
+            # Salva apenas os produtos que foram enviados com sucesso para ambas as plataformas
+            # e apenas se não estiver em modo teste
+            if produtos_enviados and not TEST_MODE:
+                sent_products = load_sent_products()
+                sent_products.extend(list(produtos_enviados))
                 save_sent_products(sent_products)
-                print(f"✅ {len(successfully_sent)} produtos salvos no histórico")
             elif TEST_MODE:
                 print("⚠️ Modo teste ativado - Produtos não serão salvos no histórico")
 

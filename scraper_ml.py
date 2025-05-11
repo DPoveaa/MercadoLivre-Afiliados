@@ -534,74 +534,43 @@ def check_promotions():
                     log(f"Produto muito parecido com um já enviado: {product_title}")
                     continue
 
-                # Tenta enviar para WhatsApp
-                whatsapp_success = False
-                try:
-                    grupo_nome = WHATSAPP_GROUP_NAME
-                    args = [
-                        "node",
-                        os.path.join("Whatsapp", "wpp_enviar.js"),
-                        message,
-                        grupo_nome,
-                        image_url or ""
-                    ]
-                    log("Iniciando envio para WhatsApp...")
-                    result = subprocess.run(args, capture_output=True, text=True, timeout=60)
-                    
-                    if result.returncode == 0:
-                        whatsapp_success = True
-                        log("✅ Enviado ao WhatsApp com sucesso.")
-                    else:
-                        error_msg = result.stderr.strip() if result.stderr else "Erro desconhecido"
-                        log(f"❌ Erro ao enviar para WhatsApp: {error_msg}")
-                        
-                        # Se o erro indicar problema de autenticação, tenta reautenticar
-                        if "AUTH ERROR" in error_msg or "DISCONNECTED" in error_msg:
-                            log("Tentando reautenticar WhatsApp...")
-                            run_whatsapp_auth()
-                            # Tenta enviar novamente após autenticação
-                            result = subprocess.run(args, capture_output=True, text=True, timeout=60)
-                            if result.returncode == 0:
-                                whatsapp_success = True
-                                log("✅ Enviado ao WhatsApp com sucesso após reautenticação.")
-                            else:
-                                log(f"❌ Falha no segundo envio para WhatsApp: {result.stderr}")
-                except subprocess.TimeoutExpired:
-                    log("❌ Timeout ao enviar para WhatsApp")
-                except subprocess.CalledProcessError as e:
-                    log(f"❌ Erro ao executar o script Node.js do WhatsApp: {e}")
-                except Exception as e:
-                    log(f"❌ Erro inesperado ao enviar para WhatsApp: {str(e)}")
-
-                # Tenta enviar para Telegram independentemente do resultado do WhatsApp
-                telegram_success = False
-                try:
-                    if image_url:
+                # Envia para Telegram
+                telegram_success = True
+                if image_url:
+                    try:
                         telegram_success = send_telegram_message(
                             message=message,
                             image_url=image_url,
                             bot_token=TELEGRAM_BOT_TOKEN,
                             chat_id=TELEGRAM_GROUP_ID
                         )
-                        if telegram_success:
-                            log("✅ Enviado ao Telegram com sucesso.")
-                        else:
-                            log("❌ Falha ao enviar para Telegram")
-                    else:
-                        log("⚠️ Imagem não disponível para envio no Telegram")
-                except Exception as e:
-                    log(f"❌ Erro ao enviar para Telegram: {str(e)}")
+                    except Exception as e:
+                        log(f"Erro ao enviar com foto para Telegram: {str(e)}")
 
-                # Se pelo menos um dos envios foi bem sucedido, salva no histórico
-                if whatsapp_success or telegram_success:
-                    if not TEST_MODE:
-                        sent_promotions.append(product_title)
-                        save_promo_history(sent_promotions)
-                        log("Produto salvo no histórico.")
-                    else:
-                        log("⚠️ Modo teste ativado - Produto não será salvo no histórico")
+                # Envia para WhatsApp se o Telegram foi bem sucedido
+                if telegram_success:
+                    try:
+                        grupo_nome = WHATSAPP_GROUP_NAME
+                        args = [
+                            "node",
+                            os.path.join("Whatsapp", "wpp_enviar.js"),
+                            message,
+                            grupo_nome,
+                            image_url or ""
+                        ]
+                        subprocess.run(args)
+                        log("✅ Enviado ao WhatsApp com sucesso.")
+                        if not TEST_MODE:
+                            sent_promotions.append(product_title)
+                            save_promo_history(sent_promotions)
+                            log("Produto salvo no histórico.")
+                        else:
+                            log("⚠️ Modo teste ativado - Produto não será salvo no histórico")
+
+                    except subprocess.CalledProcessError as e:
+                        log(f"❌ Erro ao executar o script Node.js: {e}")
                 else:
-                    log("❌ Falha ao enviar para ambos os canais - Não salvando no histórico")
+                    log("Falha ao enviar para Telegram - Pulando WhatsApp")
 
             except Exception as e:
                 log(f"Erro no processamento da promoção: {str(e)}")
