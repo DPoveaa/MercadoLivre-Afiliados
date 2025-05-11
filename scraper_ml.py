@@ -591,7 +591,7 @@ def schedule_scraper():
         check_promotions()
         schedule.every(1).hours.do(check_promotions)
     else:
-        print("Modo normal - Agendando para horários específicos")
+        print("Modo normal - Agendando para horarios com final 30")
         # Agenda para executar a cada hora, começando às 12:30
         schedule.every().day.at("12:30").do(check_promotions)
         schedule.every().day.at("13:30").do(check_promotions)

@@ -758,7 +758,7 @@ def schedule_scraper():
         run_scraper()
         schedule.every(1).hours.do(run_scraper)
     else:
-        print("Modo normal - Agendando para horários específicos")
+        print("Modo normal - Agendando para horarios com final 00")
         # Agenda para executar a cada hora, começando às 12:00
         schedule.every().day.at("12:00").do(run_scraper)
         schedule.every().day.at("13:00").do(run_scraper)
