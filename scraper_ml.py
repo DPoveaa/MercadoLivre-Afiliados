@@ -534,7 +534,7 @@ def check_promotions():
                     log(f"Produto muito parecido com um já enviado: {product_title}")
                     continue
 
-                # Primeiro tenta enviar para WhatsApp
+                # Tenta enviar para WhatsApp
                 whatsapp_success = False
                 try:
                     grupo_nome = WHATSAPP_GROUP_NAME
@@ -573,31 +573,32 @@ def check_promotions():
                 except Exception as e:
                     log(f"❌ Erro inesperado ao enviar para WhatsApp: {str(e)}")
 
-                # Se o WhatsApp foi bem sucedido, tenta enviar para Telegram
-                if whatsapp_success:
-                    try:
-                        if image_url:
-                            telegram_success = send_telegram_message(
-                                message=message,
-                                image_url=image_url,
-                                bot_token=TELEGRAM_BOT_TOKEN,
-                                chat_id=TELEGRAM_GROUP_ID
-                            )
-                            if telegram_success:
-                                log("✅ Enviado ao Telegram com sucesso.")
-                            else:
-                                log("❌ Falha ao enviar para Telegram")
+                # Tenta enviar para Telegram independentemente do resultado do WhatsApp
+                telegram_success = False
+                try:
+                    if image_url:
+                        telegram_success = send_telegram_message(
+                            message=message,
+                            image_url=image_url,
+                            bot_token=TELEGRAM_BOT_TOKEN,
+                            chat_id=TELEGRAM_GROUP_ID
+                        )
+                        if telegram_success:
+                            log("✅ Enviado ao Telegram com sucesso.")
                         else:
-                            log("⚠️ Imagem não disponível para envio no Telegram")
-                    except Exception as e:
-                        log(f"❌ Erro ao enviar para Telegram: {str(e)}")
+                            log("❌ Falha ao enviar para Telegram")
+                    else:
+                        log("⚠️ Imagem não disponível para envio no Telegram")
+                except Exception as e:
+                    log(f"❌ Erro ao enviar para Telegram: {str(e)}")
 
-                    # Só salva no histórico se o WhatsApp foi bem sucedido
+                # Se pelo menos um dos envios foi bem sucedido, salva no histórico
+                if whatsapp_success or telegram_success:
                     sent_promotions.append(product_title)
                     save_promo_history(sent_promotions)
                     log("Produto salvo no histórico.")
                 else:
-                    log("❌ Falha ao enviar para WhatsApp - Pulando Telegram e histórico")
+                    log("❌ Falha ao enviar para ambos os canais - Não salvando no histórico")
 
             except Exception as e:
                 log(f"Erro no processamento da promoção: {str(e)}")
