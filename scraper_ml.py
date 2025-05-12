@@ -282,7 +282,7 @@ def get_top_offers(driver):
                     discount_value = float(discount)
                     
                     # Só adiciona se o desconto for maior que 10%
-                    if discount_value > 20:
+                    if discount_value > 5:
                         link = card.find_element(By.CSS_SELECTOR, 'a.poly-component__title').get_attribute('href')
                         title = card.find_element(By.CSS_SELECTOR, 'a.poly-component__title').text.strip()
                         
