@@ -122,12 +122,12 @@ def get_deals_with_discounts(driver):
             except ValueError:
                 # Se não conseguir converter, verifica se é "Oferta" ou similar
                 if "Oferta" in discount_text or "Promoção" in discount_text:
-                    discount = 20  # Define um desconto padrão para ofertas
+                    discount = 15  # Define um desconto padrão para ofertas
                 else:
                     continue  # Pula este produto se não conseguir determinar o desconto
             
-            # Só adiciona se o desconto for maior que 10%
-            if discount > 20:
+            # Só adiciona se o desconto for maior que 15%
+            if discount > 15:
                 # Extrai o link
                 link_element = card.find_element(
                     By.CSS_SELECTOR, 
