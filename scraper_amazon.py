@@ -114,7 +114,17 @@ def get_deals_with_discounts(driver):
                 'div.style_filledRoundedBadgeLabel__Vo-4g span.a-size-mini'
             )
             discount_text = discount_element.text.strip()
-            discount = int(discount_text.split('%')[0].strip())  # Extrai o valor numérico
+            
+            # Tenta extrair o valor numérico do desconto
+            try:
+                # Remove caracteres não numéricos e converte para inteiro
+                discount = int(''.join(filter(str.isdigit, discount_text)))
+            except ValueError:
+                # Se não conseguir converter, verifica se é "Oferta" ou similar
+                if "Oferta" in discount_text or "Promoção" in discount_text:
+                    discount = 20  # Define um desconto padrão para ofertas
+                else:
+                    continue  # Pula este produto se não conseguir determinar o desconto
             
             # Só adiciona se o desconto for maior que 10%
             if discount > 20:
@@ -747,21 +757,31 @@ def run_scraper():
     driver = webdriver.Chrome(service=service, options=chrome_options)
 
     try:
+        print("🔄 Iniciando coleta de links de ofertas...")
         deal_links = amazon_scraper(driver)
-        print(f"Links coletados: {len(deal_links)}")
+        print(f"✅ Links coletados: {len(deal_links)}")
         
         if deal_links:
+            print("🔄 Gerando links de afiliados e coletando dados dos produtos...")
             products_data = generate_affiliate_links(driver, deal_links)
+            print(f"✅ Dados de {len(products_data)} produtos coletados com sucesso")
             
             # Executa autenticação do WhatsApp
+            print("🔄 Iniciando autenticação do WhatsApp...")
             run_whatsapp_auth()
             
             # Envia para o WhatsApp e Telegram
+            print("🔄 Enviando mensagens para WhatsApp...")
             whatsapp_success = send_whatsapp_message(products_data, driver)
+            print(f"✅ {len(whatsapp_success)} produtos enviados para WhatsApp")
+            
+            print("🔄 Enviando mensagens para Telegram...")
             telegram_success = send_telegram_message(products_data, driver)
+            print(f"✅ {len(telegram_success)} produtos enviados para Telegram")
             
             # Encontra produtos que foram enviados com sucesso para ambas as plataformas
             produtos_enviados = set(whatsapp_success) & set(telegram_success)
+            print(f"✅ {len(produtos_enviados)} produtos enviados com sucesso para ambas as plataformas")
             
             # Salva apenas os produtos que foram enviados com sucesso para ambas as plataformas
             # e apenas se não estiver em modo teste
@@ -769,11 +789,12 @@ def run_scraper():
                 sent_products = load_sent_products()
                 sent_products.extend(list(produtos_enviados))
                 save_sent_products(sent_products)
+                print(f"✅ Histórico de produtos atualizado com {len(produtos_enviados)} novos produtos")
             elif TEST_MODE:
                 print("⚠️ Modo teste ativado - Produtos não serão salvos no histórico")
 
     except Exception as e:
-        print(f"Erro durante a execução do scraper: {e}")
+        print(f"❌ Erro durante a execução do scraper: {e}")
     finally:
         driver.quit()
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Execução finalizada.")
