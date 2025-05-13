@@ -73,6 +73,12 @@ OFFER_URLS = [
     "https://www.mercadolivre.com.br/ofertas?container_id=MLB779535-1&domain_id=MLB-CELLPHONES#filter_applied=domain_id&filter_position=10&is_recommended_domain=false&origin=scut",
     "https://www.mercadolivre.com.br/ofertas?container_id=MLB779544-1&domain_id=MLB-SWEATSHIRTS_AND_HOODIES$MLB-PANTS$MLB-JACKETS_AND_COATS$MLB-T_SHIRTS$MLB-SOCKS$MLB-MALE_UNDERWEAR$MLB-SPORTSWEAR$MLB-LEGGINGS$MLB-DRESSES$MLB-LOAFERS_AND_OXFORDS$MLB-BLOUSES$MLB-SHIRTS$MLB-WRISTWATCHES$MLB-SUNGLASSES#filter_applied=domain_id&filter_position=8&is_recommended_domain=true&origin=scut",
     "https://www.mercadolivre.com.br/ofertas?container_id=MLB779537-1&domain_id=MLB-SNEAKERS#filter_applied=domain_id&filter_position=7&is_recommended_domain=true&origin=scut",
+    "https://www.mercadolivre.com.br/mais-vendidos/MLB5726#origin=home", # Eletrodomésticos
+    "https://www.mercadolivre.com.br/mais-vendidos/MLB1430#origin=home", # Calçados, Roupas e Bolsas
+    "https://www.mercadolivre.com.br/mais-vendidos/MLB1000#origin=home", # Eletrônicos, Áudio e Vídeo
+    "https://www.mercadolivre.com.br/mais-vendidos/MLB1246#origin=home", # Beleza e Cuidado Pessoal
+    "https://www.mercadolivre.com.br/mais-vendidos/MLB1648#origin=home", # Informática
+    "https://www.mercadolivre.com.br/ofertas?container_id=MLB779542-1&domain_id=MLB-SPEAKERS#filter_applied=domain_id&filter_position=15&is_recommended_domain=false&origin=scut",
     "https://www.mercadolivre.com.br/ofertas?container_id=MLB779362-1&price=0.0-100.0#filter_applied=price&filter_position=6&is_recommended_domain=false&origin=scut",
     "https://www.mercadolivre.com.br/ofertas?container_id=MLB783320-1&domain_id=MLB-SUPPLEMENTS#filter_applied=domain_id&filter_position=3&is_recommended_domain=true&origin=scut"
 ]
@@ -94,7 +100,7 @@ def save_used_urls(used_urls):
         json.dump(list(used_urls), f)
 
 def get_rotated_urls():
-    """Retorna 2 URLs aleatórias da lista de ofertas, evitando repetição"""
+    """Retorna 3 URLs aleatórias da lista de ofertas, evitando repetição"""
     used_urls = load_used_urls()
     
     # Se todos os links já foram usados, limpa o histórico
@@ -107,7 +113,7 @@ def get_rotated_urls():
     available_urls = [url for url in OFFER_URLS if url not in used_urls]
     
     # Se não houver links suficientes, usa todos os links disponíveis
-    num_urls = min(2, len(available_urls))
+    num_urls = min(3, len(available_urls))
     
     # Escolhe aleatoriamente os links
     selected_urls = random.sample(available_urls, num_urls)
