@@ -1,6 +1,7 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const { sendQRToTelegram } = require('../Telegram/tl_auth');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 const { sendTelegramMessage } = require('../Telegram/tl_enviar');
 
@@ -8,6 +9,20 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 let qrFoiEscaneadoRecentemente = false;
+
+// Função para limpar os dados de autenticação
+async function limparDadosAuth() {
+    const authPath = path.resolve('./auth_data');
+    if (fs.existsSync(authPath)) {
+        try {
+            fs.rmSync(authPath, { recursive: true, force: true });
+            console.log('[CLEANUP] Dados de autenticação antigos removidos com sucesso');
+            await sendTelegramMessage('🧹 Dados de autenticação antigos foram removidos.', null, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID);
+        } catch (error) {
+            console.error('[CLEANUP ERROR] Erro ao remover dados de autenticação:', error);
+        }
+    }
+}
 
 const client = new Client({
     authStrategy: new LocalAuth({ dataPath: './auth_data' }),
@@ -37,6 +52,10 @@ client.on('ready', async () => {
 client.on('qr', async (qr) => {
     console.log('[QR EVENT] Novo QR recebido');
     qrFoiEscaneadoRecentemente = true;
+    
+    // Limpa os dados de autenticação antigos quando receber um novo QR
+    await limparDadosAuth();
+    
     await sendQRToTelegram(qr, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID);
 
     // Lembrete se não escanear
