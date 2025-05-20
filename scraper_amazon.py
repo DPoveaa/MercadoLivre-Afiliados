@@ -46,6 +46,8 @@ try:
 except json.JSONDecodeError as e:
     raise ValueError(f"Invalid JSON in AMAZON_COOKIES: {e}")
 
+FORCE_RUN_ON_START = os.getenv("FORCE_RUN_ON_START", "false").lower() == "true"
+
 # Configurações gerais
 SIMILARITY_THRESHOLD = 0.95  # Limiar de similaridade mais restritivo
 MAX_HISTORY_SIZE = 100  # Mantém as últimas promoções
@@ -808,6 +810,10 @@ def schedule_scraper():
         run_scraper()
         schedule.every(1).hours.do(run_scraper)
     else:
+                # Executa imediatamente se forçado
+        if FORCE_RUN_ON_START:
+            print("Execução imediata forçada pelo .env")
+            run_scraper()
         print("Modo normal - Agendando para horarios com final 00")
         # Agenda para executar a cada hora, começando às 12:00
         schedule.every().day.at("12:00").do(run_scraper)

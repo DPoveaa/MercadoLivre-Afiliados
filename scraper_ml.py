@@ -86,6 +86,8 @@ OFFER_URLS = [
 # Arquivo para armazenar os links já utilizados
 USED_URLS_FILE = 'used_urls_ml.json'
 
+FORCE_RUN_ON_START = os.getenv("FORCE_RUN_ON_START", "false").lower() == "true"
+
 def load_used_urls():
     """Carrega a lista de URLs já utilizadas do arquivo"""
     try:
@@ -599,6 +601,10 @@ def schedule_scraper():
         schedule.every(1).hours.do(check_promotions)
     else:
         print("Modo normal - Agendando para horarios com final 30")
+        # Executa imediatamente se forçado
+        if FORCE_RUN_ON_START:
+            print("Execução imediata forçada pelo .env")
+            check_promotions()
         # Agenda para executar a cada hora, começando às 12:30
         schedule.every().day.at("12:30").do(check_promotions)
         schedule.every().day.at("13:30").do(check_promotions)
