@@ -3,7 +3,6 @@
 
 # Node.js
 node_modules/
-package-lock.json
 
 # Python
 __pycache__/
@@ -20,6 +19,7 @@ __pycache__/
 # Cache Puppeteer, Selenium, etc.
 .wwwebjs_cache/
 auth_data/
-*.json
 .wwebjs_cache
 Whatsapp/.wwebjs_cache/2.3000.1022507914.html
+used_urls_ml.json
+promocoes*
