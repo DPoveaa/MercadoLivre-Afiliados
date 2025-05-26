@@ -2,7 +2,20 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const fetch = require('node-fetch').default;
 const mime = require('mime-types');
 
+// Validação dos argumentos
+if (process.argv.length < 4) {
+    console.error('Erro: Argumentos insuficientes');
+    console.error('Uso: node wpp_enviar.js <legenda> <nomeGrupo> [imageUrl]');
+    process.exit(1);
+}
+
 const [,, legenda, nomeGrupo, imageUrl] = process.argv;
+
+console.log('Iniciando processo de envio...');
+console.log(`Argumentos recebidos:`);
+console.log(`- Legenda: ${legenda ? 'Presente' : 'Ausente'}`);
+console.log(`- Nome do Grupo: ${nomeGrupo ? nomeGrupo : 'Ausente'}`);
+console.log(`- URL da Imagem: ${imageUrl ? 'Presente' : 'Ausente'}`);
 
 console.log(`Procurando grupo com nome: "${nomeGrupo}"`);
 
@@ -10,7 +23,12 @@ const client = new Client({
     authStrategy: new LocalAuth({ dataPath: './auth_data' }),
     puppeteer: {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-blink-features=AutomationControlled',
+          ],
     }
 });
 

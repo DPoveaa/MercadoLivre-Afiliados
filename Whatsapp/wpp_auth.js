@@ -10,6 +10,8 @@ const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 let qrFoiEscaneadoRecentemente = false;
 
+console.log('Iniciando wpp_auth.js');
+
 // Função para limpar os dados de autenticação
 async function limparDadosAuth() {
     const authPath = path.resolve('./auth_data');

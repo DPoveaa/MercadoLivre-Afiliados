@@ -560,6 +560,12 @@ def check_promotions():
                 if telegram_success:
                     try:
                         grupo_nome = WHATSAPP_GROUP_NAME
+                        log(f"Iniciando envio para WhatsApp - Grupo: {grupo_nome}")
+                        
+                        # Verifica se o grupo está definido
+                        if not grupo_nome:
+                            raise Exception("Nome do grupo do WhatsApp não definido no .env")
+                            
                         args = [
                             "node",
                             os.path.join("Whatsapp", "wpp_enviar.js"),
@@ -567,7 +573,21 @@ def check_promotions():
                             grupo_nome,
                             image_url or ""
                         ]
-                        subprocess.run(args)
+                        
+                        log(f"Executando comando: {' '.join(args)}")
+                        
+                        # Executa o comando com timeout e captura a saída
+                        result = subprocess.run(
+                            args,
+                            capture_output=True,
+                            text=True,
+                            timeout=300  # 5 minutos de timeout
+                        )
+                        
+                        if result.returncode != 0:
+                            log(f"❌ Erro no script Node.js: {result.stderr}")
+                            raise subprocess.CalledProcessError(result.returncode, args, result.stdout, result.stderr)
+                            
                         log("✅ Enviado ao WhatsApp com sucesso.")
                         if not TEST_MODE:
                             sent_promotions.append(product_title)
@@ -576,8 +596,12 @@ def check_promotions():
                         else:
                             log("⚠️ Modo teste ativado - Produto não será salvo no histórico")
 
+                    except subprocess.TimeoutExpired:
+                        log("❌ Timeout ao executar o script Node.js (5 minutos)")
                     except subprocess.CalledProcessError as e:
-                        log(f"❌ Erro ao executar o script Node.js: {e}")
+                        log(f"❌ Erro ao executar o script Node.js: {e.stderr if e.stderr else str(e)}")
+                    except Exception as e:
+                        log(f"❌ Erro inesperado ao enviar para WhatsApp: {str(e)}")
                 else:
                     log("Falha ao enviar para Telegram - Pulando WhatsApp")
 
