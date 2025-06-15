@@ -122,6 +122,21 @@ client.on('auth_failure', async (msg) => {
     process.exit(1);
 });
 
+async function reinicializarCliente() {
+    console.log('[REINIT] Tentando reinicializar o cliente WhatsApp...');
+    try {
+        await client.destroy();
+        // Aguarda um momento antes de reinicializar
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        await client.initialize();
+        console.log('[REINIT] Cliente reinicializado com sucesso');
+    } catch (error) {
+        console.error('[REINIT ERROR] Erro ao reinicializar cliente:', error);
+        await sendTelegramMessage(`❌ Erro ao reinicializar o cliente WhatsApp:\n\n${error.message}`, null, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID);
+        process.exit(1);
+    }
+}
+
 client.on('disconnected', async (reason) => {
     console.log('[DISCONNECTED]', reason);
     if (authTimeout) {
@@ -129,14 +144,7 @@ client.on('disconnected', async (reason) => {
     }
     
     await sendTelegramMessage(`🔴 Bot do WhatsApp foi desconectado. Motivo: *${reason}*`, null, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID);
-    console.log('Tentando reinicializar...');
-    try {
-        await client.destroy();
-        await client.initialize();
-    } catch (error) {
-        console.error('[REINIT ERROR] Erro ao reinicializar cliente:', error);
-        process.exit(1);
-    }
+    await reinicializarCliente();
 });
 
 // Tratamento de erros não capturados
@@ -154,6 +162,13 @@ process.on('unhandledRejection', async (reason, promise) => {
     console.error('[UNHANDLED REJECTION]', reason);
     if (authTimeout) {
         clearTimeout(authTimeout);
+    }
+    
+    // Verifica se é um erro de contexto destruído
+    if (reason.message && reason.message.includes('Execution context was destroyed')) {
+        console.log('[CONTEXT ERROR] Detectado erro de contexto destruído, tentando reinicializar...');
+        await reinicializarCliente();
+        return;
     }
     
     await sendTelegramMessage(`❌ Promessa rejeitada não tratada:\n\n${reason}`, null, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID);
