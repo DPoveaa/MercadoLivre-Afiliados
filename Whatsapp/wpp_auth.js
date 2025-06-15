@@ -10,7 +10,6 @@ const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 let qrFoiEscaneadoRecentemente = false;
 let authTimeout = null;
-let dadosJaForamLimpados = false;
 
 console.log('Iniciando wpp_auth.js');
 
@@ -79,11 +78,8 @@ client.on('qr', async (qr) => {
     console.log('[QR EVENT] Novo QR recebido');
     qrFoiEscaneadoRecentemente = true;
     
-    // Limpa os dados de autenticação antigos apenas na primeira vez que precisar de QR
-    if (!dadosJaForamLimpados) {
-        await limparDadosAuth();
-        dadosJaForamLimpados = true;
-    }
+    // Limpa os dados de autenticação antigos quando receber um novo QR
+    await limparDadosAuth();
     
     // Configura timeout para autenticação
     setupAuthTimeout();
@@ -112,7 +108,6 @@ client.on('authenticated', async () => {
     if (qrFoiEscaneadoRecentemente) {
         await sendTelegramMessage('✅ WhatsApp autenticado com sucesso!', null, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID);
         qrFoiEscaneadoRecentemente = false; // reseta a flag
-        dadosJaForamLimpados = false; // reseta a flag de limpeza para futuras sessões
     }
     process.exit(0);
 });
@@ -127,21 +122,6 @@ client.on('auth_failure', async (msg) => {
     process.exit(1);
 });
 
-async function reinicializarCliente() {
-    console.log('[REINIT] Tentando reinicializar o cliente WhatsApp...');
-    try {
-        await client.destroy();
-        // Aguarda um momento antes de reinicializar
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        await client.initialize();
-        console.log('[REINIT] Cliente reinicializado com sucesso');
-    } catch (error) {
-        console.error('[REINIT ERROR] Erro ao reinicializar cliente:', error);
-        await sendTelegramMessage(`❌ Erro ao reinicializar o cliente WhatsApp:\n\n${error.message}`, null, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID);
-        process.exit(1);
-    }
-}
-
 client.on('disconnected', async (reason) => {
     console.log('[DISCONNECTED]', reason);
     if (authTimeout) {
@@ -149,7 +129,14 @@ client.on('disconnected', async (reason) => {
     }
     
     await sendTelegramMessage(`🔴 Bot do WhatsApp foi desconectado. Motivo: *${reason}*`, null, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID);
-    await reinicializarCliente();
+    console.log('Tentando reinicializar...');
+    try {
+        await client.destroy();
+        await client.initialize();
+    } catch (error) {
+        console.error('[REINIT ERROR] Erro ao reinicializar cliente:', error);
+        process.exit(1);
+    }
 });
 
 // Tratamento de erros não capturados
@@ -167,13 +154,6 @@ process.on('unhandledRejection', async (reason, promise) => {
     console.error('[UNHANDLED REJECTION]', reason);
     if (authTimeout) {
         clearTimeout(authTimeout);
-    }
-    
-    // Verifica se é um erro de contexto destruído
-    if (reason.message && reason.message.includes('Execution context was destroyed')) {
-        console.log('[CONTEXT ERROR] Detectado erro de contexto destruído, tentando reinicializar...');
-        await reinicializarCliente();
-        return;
     }
     
     await sendTelegramMessage(`❌ Promessa rejeitada não tratada:\n\n${reason}`, null, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID);

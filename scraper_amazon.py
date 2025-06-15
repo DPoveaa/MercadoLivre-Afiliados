@@ -611,63 +611,26 @@ def amazon_scraper(driver):  # Modificado para receber o driver como parâmetro
         print(f"[Erro no scraper] {e}")
         return []
 
-def run_whatsapp_auth(max_retries=3, retry_delay=30):
-    """Executa o processo de autenticação do WhatsApp com retry"""
+def run_whatsapp_auth():
+    """Executa o processo de autenticação do WhatsApp"""
     log("Iniciando autenticação do WhatsApp...")
     auth_args = [
         "node",
         os.path.join("Whatsapp", "wpp_auth.js")
     ]
     
-    for attempt in range(max_retries):
-        try:
-            log(f"Tentativa {attempt + 1} de {max_retries}")
-            
-            # Executa o auth e aguarda conclusão
-            result = subprocess.run(
-                auth_args,
-                check=True,
-                timeout=600,  # 10 minutos para autenticar
-                capture_output=True,
-                text=True
-            )
-            
-            log("Autenticação do WhatsApp concluída com sucesso!")
-            return True
-            
-        except subprocess.CalledProcessError as e:
-            log(f"Falha na autenticação (tentativa {attempt + 1}): {str(e)}")
-            if e.stdout:
-                log(f"Saída do processo: {e.stdout}")
-            if e.stderr:
-                log(f"Erro do processo: {e.stderr}")
-                
-            if attempt < max_retries - 1:
-                log(f"Aguardando {retry_delay} segundos antes da próxima tentativa...")
-                time.sleep(retry_delay)
-            else:
-                log("Número máximo de tentativas atingido")
-                raise Exception("Erro crítico na autenticação do WhatsApp após múltiplas tentativas")
-            
-        except subprocess.TimeoutExpired:
-            log(f"Timeout na autenticação (tentativa {attempt + 1})")
-            if attempt < max_retries - 1:
-                log(f"Aguardando {retry_delay} segundos antes da próxima tentativa...")
-                time.sleep(retry_delay)
-            else:
-                log("Número máximo de tentativas atingido")
-                raise Exception("Timeout na autenticação do WhatsApp após múltiplas tentativas")
-            
-        except Exception as e:
-            log(f"Erro inesperado na autenticação: {str(e)}")
-            if attempt < max_retries - 1:
-                log(f"Aguardando {retry_delay} segundos antes da próxima tentativa...")
-                time.sleep(retry_delay)
-            else:
-                log("Número máximo de tentativas atingido")
-                raise Exception(f"Erro inesperado na autenticação do WhatsApp: {str(e)}")
-    
-    return False
+    try:
+        # Executa o auth e aguarda conclusão
+        subprocess.run(auth_args, check=True, timeout=300)  # 10 minutos para autenticar
+        log("Autenticação do WhatsApp concluída com sucesso!")
+        
+    except subprocess.CalledProcessError as e:
+        log(f"Falha na autenticação: {str(e)}")
+        raise Exception("Erro crítico na autenticação do WhatsApp")
+        
+    except subprocess.TimeoutExpired:
+        log("Tempo excedido para autenticação do WhatsApp")
+        raise Exception("Timeout na autenticação")
 
 def send_whatsapp_message(products, driver):
     """Envia os resultados formatados para o WhatsApp com imagem"""
