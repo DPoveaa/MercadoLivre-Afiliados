@@ -737,10 +737,12 @@ def send_whatsapp_message(products, driver):
 
     return new_sent_products
 
+from time import sleep
+
 def run_scraper():
     """Função principal que executa o scraper."""
     print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Iniciando execução do scraper...")
-    
+
     chrome_options = Options()
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
@@ -748,9 +750,8 @@ def run_scraper():
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument("--headless=new")  # Novo modo headless do Chrome
+    chrome_options.add_argument("--headless=new")
 
-    # Configuração do ChromeDriver baseada no sistema operacional
     if platform.system() == 'Windows':
         service = Service(ChromeDriverManager().install())
     else:
@@ -762,38 +763,36 @@ def run_scraper():
         print("🔄 Iniciando coleta de links de ofertas...")
         deal_links = amazon_scraper(driver)
         print(f"✅ Links coletados: {len(deal_links)}")
-        
+
         if deal_links:
             print("🔄 Gerando links de afiliados e coletando dados dos produtos...")
             products_data = generate_affiliate_links(driver, deal_links)
             print(f"✅ Dados de {len(products_data)} produtos coletados com sucesso")
-            
-            # Executa autenticação do WhatsApp
+
             print("🔄 Iniciando autenticação do WhatsApp...")
             run_whatsapp_auth()
-            
-            # Envia para o WhatsApp e Telegram
-            print("🔄 Enviando mensagens para WhatsApp...")
-            whatsapp_success = send_whatsapp_message(products_data, driver)
-            print(f"✅ {len(whatsapp_success)} produtos enviados para WhatsApp")
-            
-            print("🔄 Enviando mensagens para Telegram...")
-            telegram_success = send_telegram_message(products_data, driver)
-            print(f"✅ {len(telegram_success)} produtos enviados para Telegram")
-            
-            # Encontra produtos que foram enviados com sucesso para ambas as plataformas
-            produtos_enviados = set(whatsapp_success) & set(telegram_success)
-            print(f"✅ {len(produtos_enviados)} produtos enviados com sucesso para ambas as plataformas")
-            
-            # Salva apenas os produtos que foram enviados com sucesso para ambas as plataformas
-            # e apenas se não estiver em modo teste
-            if produtos_enviados and not TEST_MODE:
-                sent_products = load_sent_products()
-                sent_products.extend(list(produtos_enviados))
-                save_sent_products(sent_products)
-                print(f"✅ Histórico de produtos atualizado com {len(produtos_enviados)} novos produtos")
-            elif TEST_MODE:
-                print("⚠️ Modo teste ativado - Produtos não serão salvos no histórico")
+
+            sent_products = load_sent_products()
+            novos_enviados = []
+
+            for produto in products_data:
+                enviado_whatsapp = send_whatsapp_message([produto], driver)
+                sleep(1)
+                enviado_telegram = send_telegram_message([produto], driver)
+                sleep(1)
+
+                if produto in enviado_whatsapp and produto in enviado_telegram:
+                    if produto not in sent_products:
+                        sent_products.append(produto)
+                        novos_enviados.append(produto)
+                        if not TEST_MODE:
+                            save_sent_products(sent_products)
+                            print(f"✅ Produto salvo: {produto.get('titulo', 'sem título')}")
+
+            print(f"✅ Total de produtos novos salvos: {len(novos_enviados)}")
+
+            if TEST_MODE:
+                print("⚠️ Modo teste ativado - Produtos não foram realmente salvos")
 
     except Exception as e:
         print(f"❌ Erro durante a execução do scraper: {e}")
