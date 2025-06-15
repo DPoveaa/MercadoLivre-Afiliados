@@ -10,6 +10,7 @@ const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 let qrFoiEscaneadoRecentemente = false;
 let authTimeout = null;
+let dadosJaForamLimpados = false;
 
 console.log('Iniciando wpp_auth.js');
 
@@ -78,8 +79,11 @@ client.on('qr', async (qr) => {
     console.log('[QR EVENT] Novo QR recebido');
     qrFoiEscaneadoRecentemente = true;
     
-    // Limpa os dados de autenticação antigos quando receber um novo QR
-    await limparDadosAuth();
+    // Limpa os dados de autenticação antigos apenas na primeira vez que precisar de QR
+    if (!dadosJaForamLimpados) {
+        await limparDadosAuth();
+        dadosJaForamLimpados = true;
+    }
     
     // Configura timeout para autenticação
     setupAuthTimeout();
@@ -108,6 +112,7 @@ client.on('authenticated', async () => {
     if (qrFoiEscaneadoRecentemente) {
         await sendTelegramMessage('✅ WhatsApp autenticado com sucesso!', null, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID);
         qrFoiEscaneadoRecentemente = false; // reseta a flag
+        dadosJaForamLimpados = false; // reseta a flag de limpeza para futuras sessões
     }
     process.exit(0);
 });
