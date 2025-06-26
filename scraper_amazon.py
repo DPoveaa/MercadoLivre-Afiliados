@@ -245,15 +245,12 @@ def is_valid_image_url(url):
         print(f"Erro ao validar imagem {url}: {e}")
         return False
 
-def send_telegram_message(products, driver):
-    """Envia os resultados formatados para o Telegram com imagem"""
-    
+def send_telegram_message(products, driver, sent_products):
+    """Envia os resultados formatados para o Telegram com imagem. Não manipula mais a lista de enviados."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_GROUP_ID:
         print("Variáveis de ambiente do Telegram não configuradas!")
         return []
 
-    # Load previously sent products
-    sent_products = load_sent_products()
     new_sent_products = []
 
     for product in products:
@@ -271,31 +268,18 @@ def send_telegram_message(products, driver):
             # Constrói mensagem gradualmente
             message = "🔵 *Amazon*\n\n"
             message += f"🏷️ *{product['nome']}*\n"
-
-            # Adiciona desconto se disponível
             if product.get('desconto_percentual'):
                 message += f"\n📉 *Desconto de {product['desconto_percentual']}% OFF*\n"
-
-            # Adiciona avaliação se disponível
             if product.get('avaliacao'):
                 message += f"\n⭐ *{product['avaliacao']}*\n"
-
-            # Adiciona preços
             message += f"\n💸 *De:* {product.get('valor_original')}\n"
             message += f"\n💥 *Por apenas:* {product['valor_desconto']}"
-
             if product.get('parcelamento'):
                 try:
                     message += "\n\n💳 *Parcelamentos:*"
-                    # Padrão 1: "12x de R$ 46,62 sem juros"
                     padrao1 = re.search(r'(\d+)x de R\$\s*([\d,]+)\s*(.*)', product['parcelamento'])
-                    
-                    # Padrão 2: "Em até 12x sem juros"
                     padrao2 = re.search(r'(\d+)x\s*(.*)', product['parcelamento'])
-                    
-                    # Padrão 3: Valor total + parcelamento
                     padrao3 = re.search(r'.*(\d+)x.*sem juros', product['parcelamento'])
-
                     if padrao1:
                         qtd_parcelas = padrao1.group(1)
                         valor_parcela = f"R$ {padrao1.group(2)}"
@@ -310,25 +294,17 @@ def send_telegram_message(products, driver):
                         message += f"\n- Em até {qtd_parcelas}x sem juros"
                     else:
                         message += "\n- Parcelamento disponível (ver detalhes)"
-                        
                 except Exception as e:
                     print(f"Erro ao processar parcelamento: {str(e)}")
                     message += "\n- Condições de parcelamento no site"
-
-            # Link final
             message += "\n\n🛒 *Garanta agora:*"
             message += f"\n🔗 {product['link']}"
-
-            # Verifica e processa a imagem específica do produto atual
             image_url = None
             if product.get('imagem'):
                 if is_valid_image_url(product['imagem']):
                     image_url = product['imagem']
                 else:
-                    # Tenta obter uma imagem alternativa para este produto específico
                     image_url = get_alternative_image(driver, product['nome'], product['link'])
-
-            # Envio com imagem ou sem
             if image_url:
                 try:
                     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
@@ -342,7 +318,6 @@ def send_telegram_message(products, driver):
                     response.raise_for_status()
                 except Exception as e:
                     print(f"Erro ao enviar com imagem, tentando sem imagem: {e}")
-                    # Fallback para envio sem imagem
                     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
                     payload = {
                         'chat_id': TELEGRAM_GROUP_ID,
@@ -352,7 +327,6 @@ def send_telegram_message(products, driver):
                     response = requests.post(url, data=payload)
                     response.raise_for_status()
             else:
-                # Envio sem imagem
                 url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
                 payload = {
                     'chat_id': TELEGRAM_GROUP_ID,
@@ -361,12 +335,9 @@ def send_telegram_message(products, driver):
                 }
                 response = requests.post(url, data=payload)
                 response.raise_for_status()
-            
             print(f"Mensagem enviada: {product['nome']}")
-            # Add product to new sent products list
             new_sent_products.append(product['nome'])
             time.sleep(3)
-
         except Exception as e:
             print(f"Falha ao enviar {product.get('nome')}: {str(e)}")
 
@@ -645,13 +616,16 @@ def run_scraper():
             novos_enviados = []
 
             for produto in products_data:
-                enviado_telegram = send_telegram_message([produto], driver)
-                sleep(1)
-
-                for nome_produto in enviado_telegram:
-                    if nome_produto not in sent_products:
+                # Checa e envia só se não foi enviado
+                if not is_product_already_sent(produto['nome'], sent_products):
+                    enviado_telegram = send_telegram_message([produto], driver, sent_products)
+                    for nome_produto in enviado_telegram:
                         sent_products.append(nome_produto)
                         novos_enviados.append(nome_produto)
+                        # Remove o mais antigo se passar do limite
+                        if len(sent_products) > MAX_HISTORY_SIZE:
+                            sent_products = sent_products[-MAX_HISTORY_SIZE:]
+                    sleep(1)
 
             if not TEST_MODE and novos_enviados:
                 save_sent_products(sent_products)
