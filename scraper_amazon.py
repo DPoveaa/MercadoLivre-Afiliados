@@ -61,56 +61,40 @@ def is_similar(a: str, b: str, thresh: float = SIMILARITY_THRESHOLD) -> bool:
     return score >= thresh
 
 def load_sent_products():
-    """Carrega a lista de produtos enviados do arquivo JSON."""
+    """Load the list of previously sent products from JSON file."""
     try:
         if os.path.exists('promocoes_amazon.json'):
             with open('promocoes_amazon.json', 'r', encoding='utf-8') as f:
                 products = json.load(f)
-                # Garante que é uma lista de dicionários
-                if isinstance(products, list) and all(isinstance(p, dict) for p in products):
-                    if len(products) >= MAX_HISTORY_SIZE:
-                        print(f"Limite de {MAX_HISTORY_SIZE} produtos atingido. Removendo os mais antigos...")
-                        products = products[-MAX_HISTORY_SIZE:]
-                    return products
-                # Se for lista de strings (antigo), converte para dicionário
-                elif isinstance(products, list) and all(isinstance(p, str) for p in products):
-                    products = [{"nome": p, "link": None} for p in products]
-                    return products
+                # Se atingiu o limite, remove os mais antigos
+                if len(products) >= MAX_HISTORY_SIZE:
+                    print(f"Limite de {MAX_HISTORY_SIZE} produtos atingido. Removendo os mais antigos...")
+                    # Remove os produtos mais antigos mantendo apenas os MAX_HISTORY_SIZE mais recentes
+                    products = products[-MAX_HISTORY_SIZE:]
+                return products
         return []
     except Exception as e:
         print(f"Erro ao carregar produtos enviados: {e}")
         return []
 
 def save_sent_products(products):
-    """Salva a lista de produtos enviados no arquivo JSON."""
+    """Save the list of sent products to JSON file."""
     try:
-        # Remove duplicatas pelo link ou nome
-        unique = []
-        seen = set()
-        for p in products:
-            key = (p.get('nome', '').strip().lower(), (p.get('link') or '').strip().lower())
-            if key not in seen:
-                seen.add(key)
-                unique.append(p)
-        # Limita o tamanho
-        if len(unique) > MAX_HISTORY_SIZE:
+        # Se atingiu o limite, remove os mais antigos
+        if len(products) > MAX_HISTORY_SIZE:
             print(f"Limite de {MAX_HISTORY_SIZE} produtos atingido. Removendo os mais antigos...")
-            unique = unique[-MAX_HISTORY_SIZE:]
+            # Remove os produtos mais antigos mantendo apenas os MAX_HISTORY_SIZE mais recentes
+            products = products[-MAX_HISTORY_SIZE:]
+            
         with open('promocoes_amazon.json', 'w', encoding='utf-8') as f:
-            json.dump(unique, f, ensure_ascii=False, indent=2)
+            json.dump(products, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"Erro ao salvar produtos enviados: {e}")
 
-def is_product_already_sent(product, sent_products):
-    """Verifica se um produto já foi enviado comparando nome (similaridade) e link exato."""
-    nome = product.get('nome', '').strip().lower()
-    link = (product.get('link') or '').strip().lower()
-    for sent in sent_products:
-        sent_nome = sent.get('nome', '').strip().lower()
-        sent_link = (sent.get('link') or '').strip().lower()
-        if is_similar(nome, sent_nome):
-            return True
-        if link and sent_link and link == sent_link:
+def is_product_already_sent(product_name, sent_products):
+    """Check if a product has already been sent by comparing names."""
+    for sent_product in sent_products:
+        if is_similar(product_name, sent_product):
             return True
     return False
 
@@ -262,22 +246,25 @@ def is_valid_image_url(url):
         return False
 
 def send_telegram_message(products, driver):
-    """Envia os resultados formatados para o Telegram com imagem e atualiza o histórico corretamente."""
+    """Envia os resultados formatados para o Telegram com imagem"""
+    
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_GROUP_ID:
         print("Variáveis de ambiente do Telegram não configuradas!")
         return []
 
+    # Load previously sent products
     sent_products = load_sent_products()
     new_sent_products = []
 
     for product in products:
         try:
+            # Verifica campos mínimos obrigatórios
             if not product.get('nome') or not product.get('valor_desconto') or not product.get('link'):
                 print(f"Produto inválido: {product.get('nome')}")
                 continue
 
-            # Verifica se já foi enviado (nome ou link)
-            if is_product_already_sent(product, sent_products):
+            # Check if product was already sent
+            if is_product_already_sent(product['nome'], sent_products):
                 print(f"Produto já enviado anteriormente: {product['nome']}")
                 continue
 
@@ -376,19 +363,14 @@ def send_telegram_message(products, driver):
                 response.raise_for_status()
             
             print(f"Mensagem enviada: {product['nome']}")
-            # Adiciona ao histórico novo formato
-            new_sent_products.append({"nome": product['nome'], "link": product['link']})
+            # Add product to new sent products list
+            new_sent_products.append(product['nome'])
             time.sleep(3)
 
         except Exception as e:
             print(f"Falha ao enviar {product.get('nome')}: {str(e)}")
 
-    # Atualiza e salva histórico
-    if new_sent_products:
-        sent_products.extend(new_sent_products)
-        save_sent_products(sent_products)
-
-    return [p['nome'] for p in new_sent_products]
+    return new_sent_products
 
 def format_price(price_str):
     """Formata o preço adicionando pontos para separar milhares e removendo espaços extras."""
@@ -659,8 +641,21 @@ def run_scraper():
             products_data = generate_affiliate_links(driver, deal_links)
             print(f"✅ Dados de {len(products_data)} produtos coletados com sucesso")
 
-            enviados = send_telegram_message(products_data, driver)
-            print(f"✅ Total de produtos novos enviados: {len(enviados)}")
+            sent_products = load_sent_products()
+            novos_enviados = []
+
+            for produto in products_data:
+                enviado_telegram = send_telegram_message([produto], driver)
+                sleep(1)
+
+                for nome_produto in enviado_telegram:
+                    if nome_produto not in sent_products:
+                        sent_products.append(nome_produto)
+                        novos_enviados.append(nome_produto)
+
+            if not TEST_MODE and novos_enviados:
+                save_sent_products(sent_products)
+                print(f"✅ Produtos salvos: {novos_enviados}")
 
             if TEST_MODE:
                 print("⚠️ Modo teste ativado - Produtos não foram realmente salvos")
