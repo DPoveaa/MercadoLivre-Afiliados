@@ -16,6 +16,7 @@ import re
 from datetime import datetime
 from difflib import SequenceMatcher
 from urllib.parse import urlparse
+import unicodedata
 
 import schedule
 
@@ -55,9 +56,22 @@ def log(message):
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] {message}")
 
+def normalize_name(name):
+    """Normaliza o nome removendo acentos, caixa e espaços extras."""
+    if not isinstance(name, str):
+        return ''
+    name = name.lower().strip()
+    name = unicodedata.normalize('NFKD', name)
+    name = ''.join([c for c in name if not unicodedata.combining(c)])
+    name = ' '.join(name.split())
+    return name
+
 def is_similar(a: str, b: str, thresh: float = SIMILARITY_THRESHOLD) -> bool:
     """Compare two strings and return True if they are similar above the threshold."""
-    score = SequenceMatcher(None, a, b).ratio()
+    a_norm = normalize_name(a)
+    b_norm = normalize_name(b)
+    score = SequenceMatcher(None, a_norm, b_norm).ratio()
+    print(f"[DEBUG] Comparando: '{a_norm}' <-> '{b_norm}' | Similaridade: {score:.3f}")
     return score >= thresh
 
 def load_sent_products():
@@ -95,6 +109,7 @@ def is_product_already_sent(product_name, sent_products):
     """Check if a product has already been sent by comparing names."""
     for sent_product in sent_products:
         if is_similar(product_name, sent_product):
+            print(f"[LOG] Produto '{product_name}' já foi enviado antes (similar a '{sent_product}')")
             return True
     return False
 
