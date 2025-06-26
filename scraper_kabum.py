@@ -61,20 +61,46 @@ def init_driver():
     log("Inicializando navegador com undetected-chromedriver...")
 
     options = uc.ChromeOptions()
+    
+    # Opções essenciais para servidor Linux headless
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
+    options.add_argument('--headless=new')
+    
+    # Opções adicionais para estabilidade
     options.add_argument('--disable-extensions')
-    options.add_argument('--window-size=1920,1080')
-    options.add_argument("--start-minimized")
+    options.add_argument('--disable-plugins')
+    options.add_argument('--disable-images')
+    options.add_argument('--disable-javascript')
+    options.add_argument('--disable-background-timer-throttling')
+    options.add_argument('--disable-backgrounding-occluded-windows')
+    options.add_argument('--disable-renderer-backgrounding')
+    options.add_argument('--disable-features=TranslateUI')
+    options.add_argument('--disable-ipc-flooding-protection')
+    options.add_argument('--disable-default-apps')
+    options.add_argument('--disable-sync')
+    options.add_argument('--no-first-run')
+    options.add_argument('--no-default-browser-check')
     options.add_argument('--disable-blink-features=AutomationControlled')
-    options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    options.add_argument('--disable-web-security')
+    options.add_argument('--allow-running-insecure-content')
+    options.add_argument('--disable-features=VizDisplayCompositor')
+    
+    # User agent para Linux
+    options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    
+    # Configurações de memória e performance
+    options.add_argument('--memory-pressure-off')
+    options.add_argument('--max_old_space_size=4096')
+    options.add_argument('--disable-background-networking')
     
     try:
         driver = uc.Chrome(
             options=options,
             headless=True,
-            driver_executable_path=ChromeDriverManager().install()
+            driver_executable_path=ChromeDriverManager().install(),
+            version_main=None  # Deixa o undetected-chromedriver detectar automaticamente
         )
         log("Navegador stealth iniciado")
         return driver
@@ -127,40 +153,60 @@ def gerar_link_afiliado(url_kabum):
 def get_product_links(driver):
     """Coleta os links dos produtos da página principal"""
     log("Coletando links dos produtos...")
-    try:
-        driver.get(KABUM_URL)
-        # Remover sleep e usar apenas WebDriverWait
-        wait = WebDriverWait(driver, 20)
-        products_container = wait.until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "#listing"))
-        )
-        # Encontra todos os links de produtos
-        product_links = []
-        link_selectors = [
-            "a[href*='/produto/']",
-            "div[data-testid='product-card'] a",
-            "div.sc-tYqdw a",
-            "div[class*='sc-'] a[href*='/produto/']"
-        ]
-        for selector in link_selectors:
-            try:
-                links = products_container.find_elements(By.CSS_SELECTOR, selector)
-                if links:
-                    log(f"Encontrados {len(links)} links com selector: {selector}")
-                    for link in links[:TOP_N_OFFERS]:
-                        href = link.get_attribute('href')
-                        if href and '/produto/' in href:
-                            product_links.append(href)
-                    break
-            except Exception as e:
-                log(f"Erro com selector {selector}: {str(e)}")
-                continue
-        product_links = list(set(product_links))
-        log(f"Coletados {len(product_links)} links únicos de produtos")
-        return product_links[:TOP_N_OFFERS]
-    except Exception as e:
-        log(f"Erro ao coletar links: {str(e)}")
-        return []
+    
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            driver.get(KABUM_URL)
+            # Remover sleep e usar apenas WebDriverWait
+            wait = WebDriverWait(driver, 20)
+            products_container = wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "#listing"))
+            )
+            # Encontra todos os links de produtos
+            product_links = []
+            link_selectors = [
+                "a[href*='/produto/']",
+                "div[data-testid='product-card'] a",
+                "div.sc-tYqdw a",
+                "div[class*='sc-'] a[href*='/produto/']"
+            ]
+            for selector in link_selectors:
+                try:
+                    links = products_container.find_elements(By.CSS_SELECTOR, selector)
+                    if links:
+                        log(f"Encontrados {len(links)} links com selector: {selector}")
+                        for link in links[:TOP_N_OFFERS]:
+                            href = link.get_attribute('href')
+                            if href and '/produto/' in href:
+                                product_links.append(href)
+                        break
+                except Exception as e:
+                    log(f"Erro com selector {selector}: {str(e)}")
+                    continue
+            product_links = list(set(product_links))
+            log(f"Coletados {len(product_links)} links únicos de produtos")
+            return product_links[:TOP_N_OFFERS]
+            
+        except Exception as e:
+            log(f"Tentativa {attempt + 1}/{max_retries} falhou: {str(e)}")
+            if attempt < max_retries - 1:
+                log("Aguardando 5 segundos antes de tentar novamente...")
+                time.sleep(5)
+                # Tenta reinicializar o driver se necessário
+                try:
+                    driver.quit()
+                except:
+                    pass
+                try:
+                    driver = init_driver()
+                except Exception as init_error:
+                    log(f"Erro ao reinicializar driver: {str(init_error)}")
+            else:
+                log("Todas as tentativas falharam")
+                return []
+    
+    return []
 
 def is_gift_card(product_name):
     """Verifica se o produto é um gift card"""
@@ -194,9 +240,18 @@ def encurtar_url(url):
 def extract_product_details(driver, product_url):
     """Extrai informações detalhadas de um produto individual"""
     log(f"Acessando página do produto: {product_url}")
+    
     try:
+        # Verifica se a sessão ainda é válida
+        try:
+            driver.current_url
+        except:
+            log("Sessão do driver inválida, tentando reinicializar...")
+            driver = init_driver()
+        
         driver.get(product_url)
         wait = WebDriverWait(driver, 15)
+        
         # Nome do produto
         product_name = "Nome não encontrado"
         name_selectors = [
@@ -206,6 +261,7 @@ def extract_product_details(driver, product_url):
             "h2[data-testid='product-name']",
             "h2"
         ]
+        
         for selector in name_selectors:
             try:
                 name_element = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
@@ -213,14 +269,17 @@ def extract_product_details(driver, product_url):
                 break
             except:
                 continue
+        
         if is_gift_card(product_name):
             log(f"Produto ignorado (gift card): {product_name}")
             return None
+        
         # Preços
         old_price = None
         discount_price = None
         pix_price = None
         pix_discount_percent = None
+        
         # 1. Tenta pegar o preço antigo pelo seletor mais importante
         try:
             old_price_elem = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "span.sc-5492faee-1.ibyzkU.oldPrice")))
@@ -228,6 +287,7 @@ def extract_product_details(driver, product_url):
             old_price = clean_price(old_price_text)
         except:
             old_price = None
+        
         # 2. Se não achou o old_price, tenta pegar pelo regularPrice
         if not old_price:
             try:
@@ -236,6 +296,7 @@ def extract_product_details(driver, product_url):
                 old_price = clean_price(regular_text)
             except:
                 old_price = None
+        
         # 3. Se achou o old_price pelo seletor principal, tenta pegar o regularPrice como preço com desconto
         if old_price:
             try:
@@ -246,6 +307,7 @@ def extract_product_details(driver, product_url):
                     discount_price = None
             except:
                 discount_price = None
+        
         # PIX
         pix_price = None
         try:
@@ -269,6 +331,7 @@ def extract_product_details(driver, product_url):
                         break
                 except:
                     continue
+        
         # Desconto PIX
         pix_discount_percent = None
         try:
@@ -618,6 +681,17 @@ def check_promotions():
         for i, product_url in enumerate(product_links):
             log(f"Processando produto {i+1}/{len(product_links)}")
             
+            # Verifica se o driver ainda está válido
+            try:
+                driver.current_url
+            except:
+                log("Driver inválido, reinicializando...")
+                try:
+                    driver.quit()
+                except:
+                    pass
+                driver = init_driver()
+            
             # Extrai detalhes do produto
             product = extract_product_details(driver, product_url)
             
@@ -672,8 +746,11 @@ def check_promotions():
         log(f"Erro durante verificação: {str(e)}")
     finally:
         if driver:
-            driver.quit()
-            log("Navegador fechado")
+            try:
+                driver.quit()
+                log("Navegador fechado")
+            except:
+                log("Erro ao fechar navegador")
 
 def schedule_scraper():
     """Agenda a execução do scraper"""
