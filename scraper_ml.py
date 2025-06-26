@@ -43,9 +43,6 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID_TESTE") if TEST_MODE else os.getenv("TELEGRAM_GROUP_ID")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID_TESTE") if TEST_MODE else os.getenv("TELEGRAM_CHAT_ID")
 
-# WhatsApp
-# WHATSAPP_GROUP_NAME = os.getenv("WHATSAPP_GROUP_NAME_TESTE") if TEST_MODE else os.getenv("WHATSAPP_GROUP_NAME")
-
 # Cookies do Mercado Livre
 COOKIES = json.loads(os.getenv("ML_COOKIES"))
 
@@ -199,39 +196,6 @@ def init_driver():
         except Exception as e2:
             log(f"Erro na tentativa alternativa: {str(e2)}")
             raise
-
-def run_whatsapp_auth():
-    """Executa o processo de autenticação do WhatsApp - OBRIGATÓRIO"""
-    # COMENTADO: WhatsApp não está mais funcionando
-    # log("🔐 VERIFICAÇÃO OBRIGATÓRIA: Status da autenticação do WhatsApp...")
-    
-    # log("🔄 Iniciando processo de autenticação do WhatsApp...")
-    # auth_args = [
-    #     "node",
-    #     os.path.join("Whatsapp", "wpp_auth.js")
-    # ]
-    
-    # try:
-    #     # Executa o auth e aguarda conclusão
-    #     result = subprocess.run(auth_args, capture_output=True, text=True, timeout=300)  # 10 minutos para autenticar
-        
-    #     if result.returncode == 0:
-    #         log("✅ Autenticação do WhatsApp concluída com sucesso!")
-    #         return True
-    #     else:
-    #         log(f"❌ Falha na autenticação: {result.stderr}")
-    #         raise Exception("❌ ERRO CRÍTICO: WhatsApp não conseguiu ser autenticado. O scraper não pode continuar.")
-        
-    # except subprocess.TimeoutExpired:
-    #     log("⏰ Tempo excedido para autenticação do WhatsApp")
-    #     raise Exception("⏰ TIMEOUT: WhatsApp não foi autenticado no tempo limite. O scraper não pode continuar.")
-    # except Exception as e:
-    #     log(f"❌ Erro na autenticação: {str(e)}")
-    #     raise Exception(f"❌ ERRO CRÍTICO: {str(e)}")
-    
-    # COMENTADO: WhatsApp não está mais funcionando
-    log("⚠️ WhatsApp desabilitado - enviando apenas pelo Telegram")
-    return True
 
 def add_cookies(driver):
     """Adiciona cookies com verificação"""
@@ -570,57 +534,6 @@ def check_promotions():
                     except Exception as e:
                         log(f"Erro ao enviar com foto para Telegram: {str(e)}")
 
-                # COMENTADO: WhatsApp não está mais funcionando
-                # Envia para WhatsApp se o Telegram foi bem sucedido
-                # if telegram_success:
-                #     try:
-                #         grupo_nome = WHATSAPP_GROUP_NAME
-                #         log(f"Iniciando envio para WhatsApp - Grupo: {grupo_nome}")
-                        
-                #         # Verifica se o grupo está definido
-                #         if not grupo_nome:
-                #             raise Exception("Nome do grupo do WhatsApp não definido no .env")
-                            
-                #         args = [
-                #             "node",
-                #             os.path.join("Whatsapp", "wpp_enviar.js"),
-                #             message,
-                #             grupo_nome,
-                #             image_url or ""
-                #         ]
-                        
-                #         log(f"Executando comando: {' '.join(args)}")
-                        
-                #         # Executa o comando com timeout e captura a saída
-                #         result = subprocess.run(
-                #             args,
-                #             capture_output=True,
-                #             text=True,
-                #             timeout=300  # 5 minutos de timeout
-                #         )
-                        
-                #         if result.returncode != 0:
-                #             log(f"❌ Erro no script Node.js: {result.stderr}")
-                #             raise subprocess.CalledProcessError(result.returncode, args, result.stdout, result.stderr)
-                            
-                #         log("✅ Enviado ao WhatsApp com sucesso.")
-                #         if not TEST_MODE:
-                #             sent_promotions.append(product_title)
-                #             save_promo_history(sent_promotions)
-                #             log("Produto salvo no histórico.")
-                #         else:
-                #             log("⚠️ Modo teste ativado - Produto não será salvo no histórico")
-
-                #     except subprocess.TimeoutExpired:
-                #         log("❌ Timeout ao executar o script Node.js (5 minutos)")
-                #     except subprocess.CalledProcessError as e:
-                #         log(f"❌ Erro ao executar o script Node.js: {e.stderr if e.stderr else str(e)}")
-                #     except Exception as e:
-                #         log(f"❌ Erro inesperado ao enviar para WhatsApp: {str(e)}")
-                # else:
-                #     log("Falha ao enviar para Telegram - Pulando WhatsApp")
-
-                # COMENTADO: WhatsApp não está mais funcionando - salva apenas se Telegram foi bem sucedido
                 if telegram_success:
                     if not TEST_MODE:
                         sent_promotions.append(product_title)

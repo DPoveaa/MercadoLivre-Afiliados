@@ -16,8 +16,6 @@ import re
 from datetime import datetime
 from difflib import SequenceMatcher
 from urllib.parse import urlparse
-import mimetypes
-import subprocess
 
 import schedule
 
@@ -611,149 +609,6 @@ def amazon_scraper(driver):  # Modificado para receber o driver como parâmetro
         print(f"[Erro no scraper] {e}")
         return []
 
-def run_whatsapp_auth():
-    """Executa o processo de autenticação do WhatsApp - OBRIGATÓRIO"""
-    # COMENTADO: WhatsApp não está mais funcionando
-    # log("🔐 VERIFICAÇÃO OBRIGATÓRIA: Status da autenticação do WhatsApp...")
-    
-    # log("🔄 Iniciando processo de autenticação do WhatsApp...")
-    # auth_args = [
-    #     "node",
-    #     os.path.join("Whatsapp", "wpp_auth.js")
-    # ]
-    
-    # try:
-    #     # Executa o auth e aguarda conclusão
-    #     result = subprocess.run(auth_args, capture_output=True, text=True, timeout=300)  # 10 minutos para autenticar
-        
-    #     if result.returncode == 0:
-    #         log("✅ Autenticação do WhatsApp concluída com sucesso!")
-    #         return True
-    #     else:
-    #         log(f"❌ Falha na autenticação: {result.stderr}")
-    #         raise Exception("❌ ERRO CRÍTICO: WhatsApp não conseguiu ser autenticado. O scraper não pode continuar.")
-        
-    # except subprocess.TimeoutExpired:
-    #     log("⏰ Tempo excedido para autenticação do WhatsApp")
-    #     raise Exception("⏰ TIMEOUT: WhatsApp não foi autenticado no tempo limite. O scraper não pode continuar.")
-    # except Exception as e:
-    #     log(f"❌ Erro na autenticação: {str(e)}")
-    #     raise Exception(f"❌ ERRO CRÍTICO: {str(e)}")
-    
-    # COMENTADO: WhatsApp não está mais funcionando
-    log("⚠️ WhatsApp desabilitado - enviando apenas pelo Telegram")
-    return True
-
-def send_whatsapp_message(products, driver):
-    """Envia os resultados formatados para o WhatsApp com imagem"""
-    # COMENTADO: WhatsApp não está mais funcionando
-    # if not WHATSAPP_GROUP_NAME:
-    #     print("Variável de ambiente WHATSAPP_GROUP_NAME não configurada!")
-    #     return []
-
-    # # Load previously sent products
-    # sent_products = load_sent_products()
-    # new_sent_products = []
-
-    # for product in products:
-    #     try:
-    #         # Verifica campos mínimos obrigatórios
-    #         if not product.get('nome') or not product.get('valor_desconto') or not product.get('link'):
-    #             print(f"Produto inválido: {product.get('nome')}")
-    #             continue
-
-    #         # Check if product was already sent
-    #         if is_product_already_sent(product['nome'], sent_products):
-    #             print(f"Produto já enviado anteriormente: {product['nome']}")
-    #             continue
-
-    #         # Constrói mensagem gradualmente
-    #         message = "🔵 *Amazon*\n\n"
-    #         message += f"🏷️ *{product['nome']}*\n"
-
-    #         # Adiciona desconto se disponível
-    #         if product.get('desconto_percentual'):
-    #             message += f"\n📉 *Desconto de {product['desconto_percentual']}% OFF*\n"
-
-    #         # Adiciona avaliação se disponível
-    #         if product.get('avaliacao'):
-    #             message += f"\n⭐ *{product['avaliacao']}*\n"
-
-    #         # Adiciona preços
-    #         message += f"\n💸 *De:* {product.get('valor_original')}\n"
-    #         message += f"\n💥 *Por apenas:* {product['valor_desconto']}"
-
-    #         if product.get('parcelamento'):
-    #             try:
-    #                 message += "\n\n💳 *Parcelamentos:*"
-    #                 # Padrão 1: "12x de R$ 46,62 sem juros"
-    #                 padrao1 = re.search(r'(\d+)x de R\$\s*([\d,]+)\s*(.*)', product['parcelamento'])
-                    
-    #                 # Padrão 2: "Em até 12x sem juros"
-    #                 padrao2 = re.search(r'(\d+)x\s*(.*)', product['parcelamento'])
-                    
-    #                 # Padrão 3: Valor total + parcelamento
-    #                 padrao3 = re.search(r'.*(\d+)x.*sem juros', product['parcelamento'])
-
-    #                 if padrao1:
-    #                     qtd_parcelas = padrao1.group(1)
-    #                     valor_parcela = f"R$ {padrao1.group(2)}"
-    #                     status_juros = padrao1.group(3).replace("com acréscimo", "com juros")
-    #                     message += f"\n- {qtd_parcelas}x de {valor_parcela} {status_juros}"
-    #                 elif padrao2:
-    #                     qtd_parcelas = padrao2.group(1)
-    #                     status_juros = padrao2.group(2).replace("com acréscimo", "com juros")
-    #                     message += f"\n- Em até {qtd_parcelas}x {status_juros}"
-    #                 elif padrao3:
-    #                     qtd_parcelas = padrao3.group(1)
-    #                     message += f"\n- Em até {qtd_parcelas}x sem juros"
-    #                 else:
-    #                     message += "\n- Parcelamento disponível (ver detalhes)"
-                        
-    #             except Exception as e:
-    #                 print(f"Erro ao processar parcelamento: {str(e)}")
-    #                 message += "\n- Condições de parcelamento no site"
-
-    #         # Link final
-    #         message += "\n\n🛒 *Garanta agora:*"
-    #         message += f"\n🔗 {product['link']}"
-
-    #         # Verifica e processa a imagem específica do produto atual
-    #         image_url = None
-    #         if product.get('imagem'):
-    #             if is_valid_image_url(product['imagem']):
-    #                 image_url = product['imagem']
-    #             else:
-    #                 # Tenta obter uma imagem alternativa para este produto específico
-    #                 image_url = get_alternative_image(driver, product['nome'], product['link'])
-
-    #         # Envia para o WhatsApp
-    #         try:
-    #             grupo_nome = WHATSAPP_GROUP_NAME
-    #             args = [
-    #                 "node",
-    #                 os.path.join("Whatsapp", "wpp_enviar.js"),
-    #                 message,
-    #                 grupo_nome,
-    #                 image_url or ""
-    #             ]
-    #             subprocess.run(args)
-    #             print(f"✅ Mensagem enviada para WhatsApp: {product['nome']}")
-    #             new_sent_products.append(product['nome'])
-    #             time.sleep(3)
-
-    #         except subprocess.CalledProcessError as e:
-    #             print(f"❌ Erro ao executar o script Node.js: {e}")
-
-    #     except Exception as e:
-    #         print(f"Falha ao enviar {product.get('nome')}: {str(e)}")
-
-    # return new_sent_products
-    
-    # COMENTADO: WhatsApp não está mais funcionando
-    print("⚠️ WhatsApp desabilitado - enviando apenas pelo Telegram")
-    return []
-
 from time import sleep
 
 def run_scraper():
@@ -786,22 +641,13 @@ def run_scraper():
             products_data = generate_affiliate_links(driver, deal_links)
             print(f"✅ Dados de {len(products_data)} produtos coletados com sucesso")
 
-            # COMENTADO: WhatsApp não está mais funcionando
-            # print("🔄 Iniciando autenticação do WhatsApp...")
-            # run_whatsapp_auth()
-
             sent_products = load_sent_products()
             novos_enviados = []
 
             for produto in products_data:
-                # COMENTADO: WhatsApp não está mais funcionando
-                # enviado_whatsapp = send_whatsapp_message([produto], driver)
-                # sleep(1)
                 enviado_telegram = send_telegram_message([produto], driver)
                 sleep(1)
 
-                # COMENTADO: WhatsApp não está mais funcionando - salva apenas se Telegram foi bem sucedido
-                # if produto in enviado_whatsapp and produto in enviado_telegram:
                 if produto in enviado_telegram:
                     if produto not in sent_products:
                         sent_products.append(produto)
