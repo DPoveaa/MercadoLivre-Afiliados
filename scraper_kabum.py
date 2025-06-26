@@ -768,9 +768,10 @@ def schedule_scraper():
 
     log("Scraper da Kabum agendado para executar todo dia nos minutos 15 de cada hora")
 
+    # Loop infinito para garantir que o agendamento continue rodando
     while True:
         schedule.run_pending()
-        time.sleep(60)
+        time.sleep(10)
 
 if __name__ == "__main__":
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_GROUP_ID:
