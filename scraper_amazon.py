@@ -71,7 +71,6 @@ def is_similar(a: str, b: str, thresh: float = SIMILARITY_THRESHOLD) -> bool:
     a_norm = normalize_name(a)
     b_norm = normalize_name(b)
     score = SequenceMatcher(None, a_norm, b_norm).ratio()
-    print(f"[DEBUG] Comparando: '{a_norm}' <-> '{b_norm}' | Similaridade: {score:.3f}")
     return score >= thresh
 
 def load_sent_products():
@@ -109,7 +108,7 @@ def is_product_already_sent(product_name, sent_products):
     """Check if a product has already been sent by comparing names."""
     for sent_product in sent_products:
         if is_similar(product_name, sent_product):
-            print(f"[LOG] Produto '{product_name}' já foi enviado antes (similar a '{sent_product}')")
+            print(f"Produto '{product_name}' já está na lista, não será enviado novamente.")
             return True
     return False
 
