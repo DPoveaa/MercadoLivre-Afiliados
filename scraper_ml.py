@@ -306,7 +306,7 @@ def get_top_offers(driver):
     return [item['url'] for item in filtered_offers]
     
 def get_product_details(driver, url, max_retries=3):
-    """Extrai detalhes do produto com tentativas em caso de erro"""
+    """Extrai detalhes do produto com tentativas em caso de erro, logando cada campo individualmente"""
     for attempt in range(1, max_retries + 1):
         try:
             log(f"Tentativa {attempt} para extrair produto: {url}")
@@ -316,6 +316,7 @@ def get_product_details(driver, url, max_retries=3):
             # Extrai link de afiliado
             affiliate_link = ""
             try:
+                log("Extraindo link de afiliado...")
                 generate_button = driver.find_element(By.CSS_SELECTOR, 'button[data-testid="generate_link_button"]')
                 generate_button.click()
                 time.sleep(random.uniform(1.5, 2.5))
@@ -325,41 +326,53 @@ def get_product_details(driver, url, max_retries=3):
                         affiliate_link = textarea.get_attribute("value").strip()
                         break
                     time.sleep(random.uniform(0.5, 1.5))
-                
                 if not affiliate_link:
                     raise Exception("Link de afiliado não gerado")
-                    
+                log(f"Link de afiliado extraído: {affiliate_link}")
             except Exception as e:
-                log(f"Erro ao gerar link de afiliado: {e}")
+                log(f"Erro ao extrair link de afiliado: {e}")
                 if attempt < max_retries:
-                    log(f"Tentando novamente... (Tentativa {attempt + 1}/{max_retries})")
+                    log(f"Tentar novamente... (Tentativa {attempt + 1}/{max_retries})")
                     continue
                 else:
                     log("Número máximo de tentativas atingido. Pulando produto.")
                     return None, None, None
 
             # Título do produto
-            product_title = driver.find_element(By.CSS_SELECTOR, "h1.ui-pdp-title").text
+            try:
+                log("Extraindo título do produto...")
+                product_title = driver.find_element(By.CSS_SELECTOR, "h1.ui-pdp-title").text
+                log(f"Título extraído: {product_title}")
+            except Exception as e:
+                log(f"Erro ao extrair título: {e}")
+                product_title = None
 
             # Tipo de promoção
             promotion_type = ""
-            for tag in driver.find_elements(By.CLASS_NAME, "ui-pdp-promotions-pill-label"):
-                txt = tag.text.upper()
-                if "OFERTA DO DIA" in txt:
-                    promotion_type = "🔥 *OFERTA DO DIA*"
-                    break
-                if "OFERTA RELÂMPAGO" in txt:
-                    promotion_type = "⚡ *OFERTA RELÂMPAGO*"
-                    break
+            try:
+                log("Extraindo tipo de promoção...")
+                for tag in driver.find_elements(By.CLASS_NAME, "ui-pdp-promotions-pill-label"):
+                    txt = tag.text.upper()
+                    if "OFERTA DO DIA" in txt:
+                        promotion_type = "🔥 *OFERTA DO DIA*"
+                        break
+                    if "OFERTA RELÂMPAGO" in txt:
+                        promotion_type = "⚡ *OFERTA RELÂMPAGO*"
+                        break
+                log(f"Tipo de promoção extraído: {promotion_type}")
+            except Exception as e:
+                log(f"Erro ao extrair tipo de promoção: {e}")
 
             # Avaliações
             rating, rating_count = "Sem avaliações", ""
             try:
+                log("Extraindo avaliações...")
                 rev = driver.find_element(By.CLASS_NAME, "ui-pdp-review__label")
                 rating = rev.find_element(By.CLASS_NAME, "ui-pdp-review__rating").text.strip()
                 rating_count = rev.find_element(By.CLASS_NAME, "ui-pdp-review__amount").text.strip().strip('()')
-            except:
-                pass
+                log(f"Avaliação: {rating}, Quantidade: {rating_count}")
+            except Exception as e:
+                log(f"Erro ao extrair avaliações: {e}")
 
             # Preços
             def parse_price(selector):
@@ -371,87 +384,150 @@ def get_product_details(driver, url, max_retries=3):
                     return f"{frac},{cents_text}"
                 except NoSuchElementException:
                     return None
+                except Exception as e:
+                    log(f"Erro ao extrair preço com selector {selector}: {e}")
+                    return None
 
-            original_price = parse_price(".ui-pdp-price__original-value")
-            current_price = parse_price(".ui-pdp-price__second-line") or "Preço não encontrado"
+            try:
+                log("Extraindo preço original...")
+                original_price = parse_price(".ui-pdp-price__original-value")
+                log(f"Preço original: {original_price}")
+            except Exception as e:
+                log(f"Erro ao extrair preço original: {e}")
+                original_price = None
+            try:
+                log("Extraindo preço atual...")
+                current_price = parse_price(".ui-pdp-price__second-line") or "Preço não encontrado"
+                log(f"Preço atual: {current_price}")
+            except Exception as e:
+                log(f"Erro ao extrair preço atual: {e}")
+                current_price = None
 
             # Desconto
             try:
+                log("Extraindo desconto...")
                 discount_text = driver.find_element(By.CSS_SELECTOR, ".andes-money-amount__discount").text
-            except:
+                log(f"Desconto: {discount_text}")
+            except Exception as e:
+                log(f"Erro ao extrair desconto: {e}")
                 discount_text = ""
 
             # Cupom
             coupon_message = ""
             try:
-                cup = driver.find_element(By.CSS_SELECTOR, ".ui-pdp-promotions-label__text").text
-                m = re.search(r"(\d+%|R\$\d+)\s+OFF", cup)
-                if m:
-                    coupon_message = f"🎟️ Cupom de {m.group(0)} disponível nesta compra!"
-            except:
-                pass
+                log("Extraindo cupom...")
+                # Tenta pelo seletor antigo
+                try:
+                    cup = driver.find_element(By.CSS_SELECTOR, ".ui-pdp-promotions-label__text").text
+                    m = re.search(r"(\d+%|R\$\d+)\s+OFF", cup)
+                    if m:
+                        coupon_message = f"🎟️ Cupom de {m.group(0)} disponível nesta compra!"
+                except Exception:
+                    # Tenta pelo novo seletor
+                    try:
+                        # Procura o label do cupom
+                        coupon_label = driver.find_element(By.CSS_SELECTOR, ".ui-vpp-coupons-awareness__checkbox-label")
+                        coupon_text = coupon_label.text.strip()
+                        if coupon_text:
+                            coupon_message = f"🎟️ {coupon_text}"
+                        # Procura o valor economizado
+                        try:
+                            economiza = driver.find_element(By.CSS_SELECTOR, ".ui-vpp-coupons__text").text
+                            if economiza:
+                                coupon_message += f" ({economiza})"
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+                log(f"Cupom extraído: {coupon_message}")
+            except Exception as e:
+                log(f"Erro ao extrair cupom: {e}")
 
-            # Imagem — força retry se vazio
-            image_url = driver.find_element(
-                By.CSS_SELECTOR, ".ui-pdp-image.ui-pdp-gallery__figure__image"
-            ).get_attribute("src")
-            if not image_url:
-                raise Exception("Imagem não encontrada")
-            
-            # Parcelamento — tenta sempre coletar Mercado Pago e o 1º bloco de "Outros cartões"
+            # Imagem
+            try:
+                log("Extraindo imagem...")
+                image_url = driver.find_element(
+                    By.CSS_SELECTOR, ".ui-pdp-image.ui-pdp-gallery__figure__image"
+                ).get_attribute("src")
+                if not image_url:
+                    raise Exception("Imagem não encontrada")
+                log(f"Imagem extraída: {image_url}")
+            except Exception as e:
+                log(f"Erro ao extrair imagem: {e}")
+                image_url = None
+
+            # Parcelamento
             installment_lines = []
             try:
-                pay_link_elem = driver.find_element(
-                    By.XPATH, "//a[contains(text(), 'Ver os meios de pagamento')]"
-                )
-                pay_link = pay_link_elem.get_attribute("href")
-                driver.get(pay_link)
-                WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, ".ui-pdp-container__row--credit-card"))
-                )
-                container = driver.find_element(By.CSS_SELECTOR, ".ui-pdp-container__row--credit-card")
-                titles = container.find_elements(By.CSS_SELECTOR, "p.ui-vip-payment_methods__title")
+                log("Extraindo parcelamento...")
+                # Tenta encontrar o botão/link de parcelamento por diferentes textos
+                pay_link_elem = None
+                # 1. "Ver os meios de pagamento"
+                try:
+                    pay_link_elem = driver.find_element(By.XPATH, "//a[contains(text(), 'Ver os meios de pagamento')]")
+                except Exception:
+                    pass
+                # 2. "Ver meios de pagamento e promoções"
+                if not pay_link_elem:
+                    try:
+                        pay_link_elem = driver.find_element(By.XPATH, "//a[contains(text(), 'Ver meios de pagamento e promoções')]")
+                    except Exception:
+                        pass
+                # 3. genérico pelo data-testid
+                if not pay_link_elem:
+                    try:
+                        pay_link_elem = driver.find_element(By.CSS_SELECTOR, "a.ui-pdp-action-modal__link[data-testid='action-modal-link']")
+                    except Exception:
+                        pass
+                if pay_link_elem:
+                    pay_link = pay_link_elem.get_attribute("href")
+                    driver.get(pay_link)
+                    WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, ".ui-pdp-container__row--credit-card"))
+                    )
+                    container = driver.find_element(By.CSS_SELECTOR, ".ui-pdp-container__row--credit-card")
+                    titles = container.find_elements(By.CSS_SELECTOR, "p.ui-vip-payment_methods__title")
 
-                found_others = False
-                captured_others = False
+                    found_others = False
+                    captured_others = False
 
-                for title in titles:
-                    full_text = title.text.strip()
-                    lower = full_text.lower()
+                    for title in titles:
+                        full_text = title.text.strip()
+                        lower = full_text.lower()
 
-                    if "mercado pago" in lower:
-                        label = "*Com Mercado Pago*"
-                    elif not captured_others:
-                        label = "*Outros cartões*"
-                        # Se for "sem juros", marcar prioridade
-                        if "sem juros" in lower:
-                            found_others = True
-                            captured_others = True
-                        elif not found_others:
-                            # salva com juros, mas só se ainda não temos "sem juros"    
-                            captured_others = True
+                        if "mercado pago" in lower:
+                            label = "*Com Mercado Pago*"
+                        elif not captured_others:
+                            label = "*Outros cartões*"
+                            if "sem juros" in lower:
+                                found_others = True
+                                captured_others = True
+                            elif not found_others:
+                                captured_others = True
+                            else:
+                                continue
                         else:
                             continue
-                    else:
-                        continue
 
-                    info = (
-                        full_text
-                        .replace("Até ", "")
-                        .replace("com cartão Mercado Pago", "")
-                        .replace("com estes cartões", "")
-                        .replace("Ou até ", "")
-                        .replace("com acréscimo", "com juros")
-                        .strip()
-                    )
+                        info = (
+                            full_text
+                            .replace("Até ", "")
+                            .replace("com cartão Mercado Pago", "")
+                            .replace("com estes cartões", "")
+                            .replace("Ou até ", "")
+                            .replace("com acréscimo", "com juros")
+                            .strip()
+                        )
 
-                    installment_lines.append(f"- {label}: {info}")
+                        installment_lines.append(f"- {label}: {info}")
 
-                driver.back()
-                time.sleep(1)
+                    driver.back()
+                    time.sleep(1)
+                    log(f"Parcelamento extraído: {installment_lines}")
+                else:
+                    log("Nenhum botão de parcelamento encontrado.")
             except Exception as e:
                 log(f"Erro ao coletar parcelamento diretamente: {e}")
-                raise
 
             installment_text = (
                 "💳 *Parcelamentos:*\n" + "\n".join(installment_lines)
@@ -486,7 +562,7 @@ def get_product_details(driver, url, max_retries=3):
             return product_title, "\n\n".join(parts), image_url
 
         except Exception as e:
-            log(f"Erro ao extrair detalhes (tentativa {attempt}/{max_retries}): {e}")
+            log(f"Erro inesperado ao extrair detalhes (tentativa {attempt}/{max_retries}): {e}")
             time.sleep(random.uniform(2, 4))
 
     log(f"Falha definitiva ao extrair dados do produto após {max_retries} tentativas: {url}")
