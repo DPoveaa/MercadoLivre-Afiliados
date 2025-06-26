@@ -617,7 +617,7 @@ def format_telegram_message(product):
     # Preço no PIX
     if product['pix_price'] and product['discount_price']:
         message += f"💥 Ou: R$ {product['pix_price']:.2f} (à vista no PIX)\n"
-    elif product['pix_price'] and not product['discount_price']:
+    elif product['pix_price']:
         message += f"💥 Por apenas: R$ {product['pix_price']:.2f} (à vista no PIX)\n"
     
     # Informações de cartão (formatadas)
