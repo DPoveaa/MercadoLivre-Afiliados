@@ -421,20 +421,25 @@ def get_product_details(driver, url, max_retries=3):
                     cup = driver.find_element(By.CSS_SELECTOR, ".ui-pdp-promotions-label__text").text
                     m = re.search(r"(\d+%|R\$\d+)\s+OFF", cup)
                     if m:
-                        coupon_message = f"🎟️ Cupom de {m.group(0)} disponível nesta compra!"
+                        coupon_message = f"🎟️ Cupom disponível: {m.group(0)}."
                 except Exception:
                     # Tenta pelo novo seletor
                     try:
                         # Procura o label do cupom
                         coupon_label = driver.find_element(By.CSS_SELECTOR, ".ui-vpp-coupons-awareness__checkbox-label")
                         coupon_text = coupon_label.text.strip()
-                        if coupon_text:
-                            coupon_message = f"🎟️ {coupon_text}"
+                        m = re.search(r"(\d+%|R\$\d+)\s*OFF", coupon_text)
+                        if m:
+                            valor = m.group(0)
+                            coupon_message = f"🎟️ Cupom disponível: {valor}."
+                        else:
+                            # Se não encontrar padrão, apenas informa que há cupom
+                            coupon_message = f"🎟️ Cupom disponível."
                         # Procura o valor economizado
                         try:
                             economiza = driver.find_element(By.CSS_SELECTOR, ".ui-vpp-coupons__text").text
                             if economiza:
-                                coupon_message += f" ({economiza})"
+                                coupon_message += f" {economiza}"
                         except Exception:
                             pass
                     except Exception:
