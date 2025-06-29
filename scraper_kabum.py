@@ -692,11 +692,38 @@ def check_promotions():
                     pass
                 driver = init_driver()
             
-            # Extrai detalhes do produto
-            product = extract_product_details(driver, product_url)
+            # Extrai detalhes do produto com retry
+            product = None
+            max_retries = 3
+            for retry in range(max_retries):
+                try:
+                    product = extract_product_details(driver, product_url)
+                    if product:
+                        break
+                    else:
+                        log(f"Tentativa {retry + 1}/{max_retries} falhou - produto retornou None")
+                except Exception as e:
+                    log(f"Tentativa {retry + 1}/{max_retries} falhou com erro: {str(e)}")
+                
+                if retry < max_retries - 1:
+                    log(f"Aguardando 3 segundos antes da próxima tentativa...")
+                    time.sleep(3)
             
+            # Validação dos dados obrigatórios
+            dados_faltando = []
             if not product:
-                log(f"Erro ao extrair detalhes do produto {i+1}")
+                log(f"Erro ao extrair detalhes do produto {i+1} após {max_retries} tentativas")
+                continue
+            if not product.get('name'):
+                dados_faltando.append('nome')
+            if not (product.get('old_price') or product.get('discount_price') or product.get('pix_price')):
+                dados_faltando.append('valores')
+            if not product.get('card_info'):
+                dados_faltando.append('parcelamento')
+            if not product.get('affiliate_url'):
+                dados_faltando.append('link')
+            if dados_faltando:
+                log(f"Produto ignorado por falta de dados obrigatórios: {', '.join(dados_faltando)} - {product.get('name', 'Nome não encontrado')}")
                 continue
             
             # Verifica se já foi enviado
