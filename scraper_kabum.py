@@ -252,7 +252,7 @@ def extract_product_details(driver, product_url):
         driver.get(product_url)
         wait = WebDriverWait(driver, 15)
         
-        # Nome do produto
+        # Nome do produto - captura primeiro para verificar se é gift card
         product_name = "Nome não encontrado"
         name_selectors = [
             "h1[data-testid='product-name']",
@@ -270,6 +270,7 @@ def extract_product_details(driver, product_url):
             except:
                 continue
         
+        # Verifica se é gift card logo após capturar o nome
         if is_gift_card(product_name):
             log(f"Produto ignorado (gift card): {product_name}")
             return None
@@ -699,7 +700,14 @@ def check_promotions():
                 try:
                     product = extract_product_details(driver, product_url)
                     if product:
-                        break
+                        # Verifica se já foi enviado antes de continuar
+                        is_duplicate = any(is_similar_product(product, sent) for sent in sent_promotions)
+                        if is_duplicate:
+                            log(f"Produto já enviado: {product['name'][:50]}...")
+                            product = None  # Marca como None para não processar
+                            break
+                        else:
+                            break  # Produto válido e não duplicado
                     else:
                         log(f"Tentativa {retry + 1}/{max_retries} falhou - produto retornou None")
                 except Exception as e:
@@ -712,7 +720,7 @@ def check_promotions():
             # Validação dos dados obrigatórios
             dados_faltando = []
             if not product:
-                log(f"Erro ao extrair detalhes do produto {i+1} após {max_retries} tentativas")
+                log(f"Erro ao extrair detalhes do produto {i+1} após {max_retries} tentativas ou produto já enviado/gift card")
                 continue
             if not product.get('name'):
                 dados_faltando.append('nome')
@@ -726,7 +734,7 @@ def check_promotions():
                 log(f"Produto ignorado por falta de dados obrigatórios: {', '.join(dados_faltando)} - {product.get('name', 'Nome não encontrado')}")
                 continue
             
-            # Verifica se já foi enviado
+            # Verifica se já foi enviado (verificação adicional)
             is_duplicate = any(is_similar_product(product, sent) for sent in sent_promotions)
             
             if not is_duplicate:
