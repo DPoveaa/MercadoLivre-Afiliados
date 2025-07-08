@@ -145,6 +145,23 @@ def save_promo_history(history: deque):
 # Variável global para armazenar promoções já enviadas
 sent_promotions = load_promo_history()
 
+# Função para registrar promoções enviadas para WhatsApp
+WHATSAPP_HISTORY_FILE = 'promocoes_ml_whatsapp.json'
+
+def load_whatsapp_history():
+    try:
+        with open(WHATSAPP_HISTORY_FILE, 'r', encoding='utf-8') as f:
+            nomes = json.load(f)
+        return deque(nomes, maxlen=MAX_HISTORY_SIZE)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return deque(maxlen=MAX_HISTORY_SIZE)
+
+def save_whatsapp_history(history: deque):
+    with open(WHATSAPP_HISTORY_FILE, 'w', encoding='utf-8') as f:
+        json.dump(list(history), f)
+
+sent_promotions_whatsapp = load_whatsapp_history()
+
 def log(message):
     """Função para logging com timestamp"""
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -625,6 +642,18 @@ def check_promotions():
                 else:
                     log("Falha ao enviar para Telegram - Produto não será salvo")
 
+                # Envia para WhatsApp
+                whatsapp_success = send_whatsapp_message(message, image_url)
+                if whatsapp_success:
+                    if not TEST_MODE:
+                        sent_promotions_whatsapp.append(product_title)
+                        save_whatsapp_history(sent_promotions_whatsapp)
+                        log("Produto salvo no histórico do WhatsApp.")
+                    else:
+                        log("⚠️ Modo teste ativado - Produto não será salvo no histórico do WhatsApp")
+                else:
+                    log("Falha ao enviar para WhatsApp - Produto não será salvo no histórico do WhatsApp")
+
             except Exception as e:
                 log(f"Erro no processamento da promoção: {str(e)}")
 
@@ -634,6 +663,26 @@ def check_promotions():
         if driver:
             log("Fechando o navegador...")
             driver.quit()
+
+def send_whatsapp_message(message, image_url=None):
+    group = "Grupo Teste" if TEST_MODE else "Central De Descontos"
+    cmd = ['node', 'Wpp/wpp_envio.js', group, message]
+    if image_url:
+        cmd.append(image_url)
+    try:
+        subprocess.run(cmd, check=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        if e.returncode == 2:
+            log("Sessão do WhatsApp expirada. Chamando wpp_auth.js para reenviar QR code ao Telegram.")
+            subprocess.Popen(['node', 'Wpp/wpp_auth.js'])
+            log("QR code enviado para o Telegram. Escaneie para reautenticar o WhatsApp.")
+        else:
+            log(f"Erro ao enviar mensagem para WhatsApp: {e}")
+        return False
+    except Exception as e:
+        log(f"Erro inesperado ao enviar mensagem para WhatsApp: {e}")
+        return False
 
 def schedule_scraper():
     """Configura e inicia o agendamento do scraper."""

@@ -20,6 +20,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 from Telegram.tl_enviar import send_telegram_message
 import platform
 import requests
+import subprocess
+from collections import deque
 
 sys.stdout.reconfigure(line_buffering=True)
 
@@ -46,10 +48,61 @@ TOP_N_OFFERS = 10  # Top 10 produtos
 MAX_HISTORY_SIZE = 200
 SIMILARITY_THRESHOLD = 0.95
 
-# URL da Kabum
-KABUM_URL = "https://www.kabum.com.br/promocao/maisvendidos"
+# URL da Kabum - múltiplas URLs para rotação
+KABUM_URLS = [
+    "https://www.kabum.com.br/promocao/maisvendidos",
+    "https://www.kabum.com.br/promocao/HARDWAREKABUM?page_number=1&page_size=40&facet_filters=&sort=&variant=catalog",
+    "https://www.kabum.com.br/promocao/PCGAMER?page_number=1&page_size=40&facet_filters=&sort=&variant=catalog",
+    "https://www.kabum.com.br/promocao/COMPUTADORKABUM?page_number=1&page_size=40&facet_filters=&sort=&variant=catalog",
+    "https://www.kabum.com.br/promocao/perifericoskabum?page_number=1&page_size=40&facet_filters=&sort=&variant=catalog"
+]
+
+# Arquivo para armazenar os links já utilizados
+USED_URLS_FILE = 'used_urls_kabum.json'
+
+def load_used_urls():
+    """Carrega a lista de URLs já utilizadas do arquivo"""
+    try:
+        with open(USED_URLS_FILE, 'r') as f:
+            return set(json.load(f))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return set()
+
+def save_used_urls(used_urls):
+    """Salva a lista de URLs já utilizadas no arquivo"""
+    with open(USED_URLS_FILE, 'w') as f:
+        json.dump(list(used_urls), f)
+
+def get_rotated_urls():
+    """Retorna 3 URLs aleatórias da lista de ofertas, evitando repetição"""
+    used_urls = load_used_urls()
+    
+    # Se todos os links já foram usados, limpa o histórico
+    if len(used_urls) >= len(KABUM_URLS):
+        log("Todos os links foram utilizados. Reiniciando histórico...")
+        used_urls.clear()
+        save_used_urls(used_urls)
+    
+    # Filtra apenas os links não utilizados
+    available_urls = [url for url in KABUM_URLS if url not in used_urls]
+    
+    # Se não houver links suficientes, usa todos os links disponíveis
+    num_urls = min(2, len(available_urls))
+    
+    # Escolhe aleatoriamente os links
+    selected_urls = random.sample(available_urls, num_urls)
+    
+    # Adiciona os links selecionados ao histórico
+    used_urls.update(selected_urls)
+    save_used_urls(used_urls)
+    
+    log(f"Links selecionados: {len(selected_urls)} de {len(available_urls)} disponíveis")
+    return selected_urls
 
 FORCE_RUN_ON_START = os.getenv("FORCE_RUN_ON_START", "false").lower() == "true"
+
+WHATSAPP_HISTORY_FILE = 'promocoes_kabum_whatsapp.json'
+MAX_HISTORY_SIZE_WPP = 200
 
 def log(message):
     """Função para logging com timestamp"""
@@ -109,7 +162,7 @@ def init_driver():
         raise
 
 def load_promo_history():
-    """Carrega o histórico de promoções já enviadas"""
+    """Carrega o histórico de nomes de produtos já enviados"""
     try:
         with open(HISTORY_FILE, 'r') as f:
             return json.load(f)
@@ -117,9 +170,23 @@ def load_promo_history():
         return []
 
 def save_promo_history(history):
-    """Salva o histórico de promoções"""
+    """Salva o histórico de nomes de produtos"""
     with open(HISTORY_FILE, 'w') as f:
         json.dump(history, f)
+
+def load_whatsapp_history():
+    try:
+        with open(WHATSAPP_HISTORY_FILE, 'r', encoding='utf-8') as f:
+            nomes = json.load(f)
+        return deque(nomes, maxlen=MAX_HISTORY_SIZE_WPP)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return deque(maxlen=MAX_HISTORY_SIZE_WPP)
+
+def save_whatsapp_history(history: deque):
+    with open(WHATSAPP_HISTORY_FILE, 'w', encoding='utf-8') as f:
+        json.dump(list(history), f)
+
+sent_promotions_whatsapp = load_whatsapp_history()
 
 def clean_price(price_text):
     """Limpa o texto do preço e extrai apenas o valor numérico"""
@@ -151,18 +218,33 @@ def gerar_link_afiliado(url_kabum):
     return url_afiliado
 
 def get_product_links(driver):
-    """Coleta os links dos produtos da página principal"""
-    log("Coletando links dos produtos...")
+    """Coleta os links dos produtos de múltiplas URLs"""
+    log("Coletando links dos produtos de múltiplas URLs...")
     
-    max_retries = 3
-    for attempt in range(max_retries):
+    all_product_links = []
+    urls_to_process = get_rotated_urls()
+    
+    for url in urls_to_process:
         try:
-            driver.get(KABUM_URL)
-            # Remover sleep e usar apenas WebDriverWait
-            wait = WebDriverWait(driver, 20)
-            products_container = wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "#listing"))
+            log(f"\nAcessando categoria: {url}")
+            driver.get(url)
+            
+            # Espera inicial combinada com delay
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, '#listing'))
             )
+            time.sleep(random.uniform(2, 4))
+            
+            # Scroll dinâmico para carregar mais itens
+            last_height = driver.execute_script("return document.body.scrollHeight")
+            for _ in range(3):
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(random.uniform(1.5, 2.5))
+                new_height = driver.execute_script("return document.body.scrollHeight")
+                if new_height == last_height:
+                    break
+                last_height = new_height
+            
             # Encontra todos os links de produtos
             product_links = []
             link_selectors = [
@@ -171,9 +253,10 @@ def get_product_links(driver):
                 "div.sc-tYqdw a",
                 "div[class*='sc-'] a[href*='/produto/']"
             ]
+            
             for selector in link_selectors:
                 try:
-                    links = products_container.find_elements(By.CSS_SELECTOR, selector)
+                    links = driver.find_elements(By.CSS_SELECTOR, selector)
                     if links:
                         log(f"Encontrados {len(links)} links com selector: {selector}")
                         for link in links[:TOP_N_OFFERS]:
@@ -184,29 +267,22 @@ def get_product_links(driver):
                 except Exception as e:
                     log(f"Erro com selector {selector}: {str(e)}")
                     continue
+            
             product_links = list(set(product_links))
-            log(f"Coletados {len(product_links)} links únicos de produtos")
-            return product_links[:TOP_N_OFFERS]
+            log(f"Coletados {len(product_links)} links únicos de produtos da categoria")
+            all_product_links.extend(product_links)
+            
+            # Intervalo aleatório entre categorias
+            time.sleep(random.uniform(5, 10))
             
         except Exception as e:
-            log(f"Tentativa {attempt + 1}/{max_retries} falhou: {str(e)}")
-            if attempt < max_retries - 1:
-                log("Aguardando 5 segundos antes de tentar novamente...")
-                time.sleep(5)
-                # Tenta reinicializar o driver se necessário
-                try:
-                    driver.quit()
-                except:
-                    pass
-                try:
-                    driver = init_driver()
-                except Exception as init_error:
-                    log(f"Erro ao reinicializar driver: {str(init_error)}")
-            else:
-                log("Todas as tentativas falharam")
-                return []
+            log(f"Falha na categoria {url}: {str(e)}")
+            continue
     
-    return []
+    # Remove duplicatas e retorna os melhores
+    all_product_links = list(set(all_product_links))
+    log(f"Total de {len(all_product_links)} links únicos coletados de todas as categorias")
+    return all_product_links[:TOP_N_OFFERS]
 
 def is_gift_card(product_name):
     """Verifica se o produto é um gift card"""
@@ -275,125 +351,142 @@ def extract_product_details(driver, product_url):
             log(f"Produto ignorado (gift card): {product_name}")
             return None
         
-        # Preços
+        # Preços - novos seletores baseados no HTML fornecido
         old_price = None
         discount_price = None
         pix_price = None
         pix_discount_percent = None
         
-        # 1. Tenta pegar o preço antigo pelo seletor mais importante
+        # 1. Preço original (line-through)
         try:
-            old_price_elem = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "span.sc-5492faee-1.ibyzkU.oldPrice")))
+            # Busca qualquer span com as classes do preço original
+            old_price_elem = driver.find_element(By.CSS_SELECTOR, "span.text-black-600.text-xs.font-normal.line-through")
             old_price_text = old_price_elem.text.strip()
             old_price = clean_price(old_price_text)
-        except:
-            old_price = None
-        
-        # 2. Se não achou o old_price, tenta pegar pelo regularPrice
-        if not old_price:
+            log(f"Preço original encontrado: {old_price}")
+        except Exception as e:
+            log(f"Preço original não encontrado pelo seletor direto: {str(e)}")
+            # Fallback: busca todos os spans line-through e pega o maior valor válido
             try:
-                regular_elem = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "b.regularPrice")))
-                regular_text = regular_elem.text.strip()
-                old_price = clean_price(regular_text)
-            except:
-                old_price = None
-        
-        # 3. Se achou o old_price pelo seletor principal, tenta pegar o regularPrice como preço com desconto
-        if old_price:
-            try:
-                discount_elem = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "b.regularPrice")))
-                discount_text = discount_elem.text.strip()
-                discount_price = clean_price(discount_text)
-                if discount_price == old_price:
-                    discount_price = None
-            except:
-                discount_price = None
-        
-        # PIX
-        pix_price = None
-        try:
-            pix_elem = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "h4.sc-5492faee-2.ipHrwP.finalPrice")))
-            pix_text = pix_elem.text.strip()
-            pix_price = clean_price(pix_text)
-        except:
-            pix_selectors = [
-                "div.sc-5492faee-0 h4.sc-5492faee-2.finalPrice",
-                "h4[class*='finalPrice']",
-                "span[class*='pix']",
-                "h4[class*='final']"
-            ]
-            for selector in pix_selectors:
-                try:
-                    pix_elem = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
-                    pix_text = pix_elem.text.strip()
-                    price = clean_price(pix_text)
-                    if price:
-                        pix_price = price
-                        break
-                except:
-                    continue
-        
-        # Desconto PIX
-        pix_discount_percent = None
-        try:
-            discount_elem = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "span.sc-5492faee-3.igKOYC b.discountPercentage")))
-            discount_text = discount_elem.text.strip()
-            discount_match = re.search(r'(\d+)', discount_text)
-            if discount_match:
-                pix_discount_percent = int(discount_match.group(1))
-        except:
-            pix_discount_selectors = [
-                "span.sc-5492faee-3 b.discountPercentage",
-                "b.discountPercentage",
-                "span[class*='discountPercentage']",
-                "span[class*='pix'] b",
-                "span[class*='final'] b"
-            ]
-            for selector in pix_discount_selectors:
-                try:
-                    discount_elem = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
-                    discount_text = discount_elem.text.strip()
-                    discount_match = re.search(r'(\d+)', discount_text)
-                    if discount_match:
-                        pix_discount_percent = int(discount_match.group(1))
-                        break
-                except:
-                    continue
-        
-        # Informações de parcelamento (melhorado)
-        card_info = ""
-        installment_info = []
-        card_selectors = [
-            "div.sc-4f698d6c-0.hkfkrb",
-            "div[class*='installment']",
-            "div[class*='parcel']",
-            "span[class*='installment']",
-            "div[class*='payment']"
-        ]
-        
-        for selector in card_selectors:
-            try:
-                card_elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                for elem in card_elements:
+                old_price_elems = driver.find_elements(By.CSS_SELECTOR, "span.text-black-600.text-xs.font-normal.line-through")
+                valores = []
+                for elem in old_price_elems:
                     text = elem.text.strip()
-                    if 'x' in text and ('R$' in text or 'reais' in text.lower()):
-                        # Separa as informações de parcelamento
-                        lines = text.split('\n')
-                        for line in lines:
-                            line = line.strip()
-                            if line and ('x' in line or 'cartão' in line.lower() or 'juros' in line.lower()):
-                                installment_info.append(line)
-                        break
-                if installment_info:
-                    break
-            except:
-                continue
+                    valor = clean_price(text)
+                    if valor:
+                        valores.append(valor)
+                if valores:
+                    old_price = max(valores)
+                    log(f"Preço original encontrado (fallback): {old_price}")
+                else:
+                    # Fallback ainda mais amplo: qualquer span com 'line-through'
+                    try:
+                        generic_line_throughs = driver.find_elements(By.CSS_SELECTOR, "span.line-through")
+                        valores_genericos = []
+                        for elem in generic_line_throughs:
+                            text = elem.text.strip()
+                            valor = clean_price(text)
+                            if valor:
+                                valores_genericos.append(valor)
+                        if valores_genericos:
+                            old_price = max(valores_genericos)
+                            log(f"Preço original encontrado (fallback genérico): {old_price}")
+                        else:
+                            old_price = None
+                    except Exception as e3:
+                        log(f"Preço original não encontrado nem no fallback genérico: {str(e3)}")
+                        old_price = None
+            except Exception as e2:
+                log(f"Preço original não encontrado nem no fallback: {str(e2)}")
+                old_price = None
+
+        # 2. Preço no cartão (primeiro <b> dentro de <span class='block my-12'>)
+        try:
+            card_span = driver.find_element(By.CSS_SELECTOR, "span.block.my-12")
+            card_bolds = card_span.find_elements(By.CSS_SELECTOR, "b.text-xs.font-bold.text-black-700")
+            if card_bolds:
+                discount_price_text = card_bolds[0].text.strip()
+                discount_price = clean_price(discount_price_text)
+                log(f"Preço cartão encontrado: {discount_price}")
+            else:
+                discount_price = None
+        except Exception as e:
+            log(f"Preço cartão não encontrado: {str(e)}")
+            discount_price = None
+
+        # 3. Preço PIX (<h4 ...>)
+        try:
+            pix_elems = driver.find_elements(By.CSS_SELECTOR, "h4.text-4xl.text-secondary-500.font-bold")
+            pix_valores = []
+            for elem in pix_elems:
+                pix_text = elem.text.strip()
+                valor = clean_price(pix_text)
+                if valor:
+                    pix_valores.append(valor)
+            if pix_valores:
+                pix_price = min(pix_valores)
+                log(f"Preço PIX encontrado (menor valor): {pix_price}")
+            else:
+                pix_price = None
+        except Exception as e:
+            log(f"Preço PIX não encontrado: {str(e)}")
+            pix_price = None
         
-        # Formata as informações de parcelamento
-        if installment_info:
-            card_info = "\n- ".join(installment_info)
-            if not card_info.startswith("-"):
-                card_info = "- " + card_info
+        # 4. Informações de parcelamento (novo seletor)
+        card_info = ""
+        try:
+            # Procura pelo container de parcelamento
+            installment_container = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.w-full span.block.my-12")))
+            installment_text = installment_container.text.strip()
+            
+            if installment_text:
+                # Limpa e formata o texto de parcelamento
+                lines = installment_text.split('\n')
+                formatted_lines = []
+                for line in lines:
+                    line = line.strip()
+                    if line and ('x' in line or 'cartão' in line.lower() or 'juros' in line.lower() or 'sem juros' in line.lower()):
+                        formatted_lines.append(line)
+                
+                if formatted_lines:
+                    card_info = "\n- ".join(formatted_lines)
+                    if not card_info.startswith("-"):
+                        card_info = "- " + card_info
+                    log(f"Parcelamento encontrado: {card_info}")
+        except:
+            # Fallback para seletores antigos
+            installment_info = []
+            card_selectors = [
+                "div.sc-4f698d6c-0.hkfkrb",
+                "div[class*='installment']",
+                "div[class*='parcel']",
+                "span[class*='installment']",
+                "div[class*='payment']"
+            ]
+            
+            for selector in card_selectors:
+                try:
+                    card_elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                    for elem in card_elements:
+                        text = elem.text.strip()
+                        if 'x' in text and ('R$' in text or 'reais' in text.lower()):
+                            # Separa as informações de parcelamento
+                            lines = text.split('\n')
+                            for line in lines:
+                                line = line.strip()
+                                if line and ('x' in line or 'cartão' in line.lower() or 'juros' in line.lower()):
+                                    installment_info.append(line)
+                            break
+                    if installment_info:
+                        break
+                except:
+                    continue
+            
+            # Formata as informações de parcelamento
+            if installment_info:
+                card_info = "\n- ".join(installment_info)
+                if not card_info.startswith("-"):
+                    card_info = "- " + card_info
         
         # Avaliações
         rating = None
@@ -573,7 +666,7 @@ def escape_markdown(text):
 
 def format_telegram_message(product):
     """Formata a mensagem para o Telegram"""
-    message = f"🥷 **Kabum**\n\n"
+    message = f"🥷 *Kabum*\n\n"
     
     # Nome do produto (escapa caracteres especiais)
     product_name = escape_markdown(product['name'])
@@ -584,47 +677,65 @@ def format_telegram_message(product):
         message += f"⭐ {product['rating']} ({product['rating_count']} avaliações)\n\n"
     elif not product['rating'] and not product['rating_count']:
         message += f"⭐ (sem avaliações)\n\n"
-    
-    # Calcula descontos
+
+    # Se não houver preço antigo, usa o preço do cartão como antigo
+    old_price = product.get('old_price')
+    discount_price = product.get('discount_price')
+    pix_price = product.get('pix_price')
     desconto_cartao = None
     desconto_pix = None
-    if product['old_price'] and product['discount_price']:
-        desconto_cartao = int(round(((product['old_price'] - product['discount_price']) / product['old_price']) * 100))
-    if product['old_price'] and product['pix_price']:
-        desconto_pix = int(round(((product['old_price'] - product['pix_price']) / product['old_price']) * 100))
-    
+    desconto_cartao_percent = None
+    desconto_total = None
+
+    # Tenta extrair desconto do texto de parcelamento (ex: 'ou 1x com 9% de desconto  no cartão')
+    card_info = product.get('card_info')
+    desconto_cartao_text = None
+    if card_info:
+        import re
+        m = re.search(r'(\d+)% de desconto', card_info)
+        if m:
+            desconto_cartao_percent = int(m.group(1))
+            desconto_cartao_text = m.group(0)
+
+    # Se não houver preço antigo, usa o preço do cartão
+    if not old_price and discount_price:
+        old_price = discount_price
+
+    # Calcula descontos
+    if old_price and discount_price:
+        desconto_cartao = int(round(((old_price - discount_price) / old_price) * 100))
+    if old_price and pix_price:
+        desconto_pix = int(round(((old_price - pix_price) / old_price) * 100))
+
     # Maior desconto
-    maior_desconto = None
-    if desconto_cartao and desconto_pix:
-        maior_desconto = desconto_cartao + desconto_pix
-        if desconto_pix > desconto_cartao:
-            maior_desconto = desconto_pix
-        elif desconto_cartao > desconto_pix:
-            maior_desconto = desconto_cartao
-    elif desconto_cartao:
-        maior_desconto = desconto_cartao
+    if desconto_pix and desconto_cartao:
+        desconto_total = max(desconto_pix, desconto_cartao)
     elif desconto_pix:
-        maior_desconto = desconto_pix
-    
-    if maior_desconto:
-        message += f"📉 Desconto de até {maior_desconto}% OFF\n\n"
-    
-    # Preço antigo
-    if product['old_price']:
-        message += f"💸 De: R$ {product['old_price']:.2f}\n\n"
+        desconto_total = desconto_pix
+    elif desconto_cartao:
+        desconto_total = desconto_cartao
+    elif desconto_cartao_percent:
+        desconto_total = desconto_cartao_percent
+
+    if desconto_total:
+        message += f"📉 Desconto de até {desconto_total}% OFF\n\n"
+
+    # Preço antigo (sempre mostra)
+    if old_price:
+        message += f"💸 De: R$ {old_price:.2f}\n\n"
     # Preço no cartão
-    if product['discount_price']:
-        message += f"💥 Por apenas: R$ {product['discount_price']:.2f}\n"
+    if discount_price:
+        message += f"💥 Por apenas: R$ {discount_price:.2f}\n"
     # Preço no PIX
-    if product['pix_price'] and product['discount_price']:
-        message += f"💥 Ou: R$ {product['pix_price']:.2f} (à vista no PIX)\n"
-    elif product['pix_price']:
-        message += f"💥 Por apenas: R$ {product['pix_price']:.2f} (à vista no PIX)\n"
-    
+    if pix_price and discount_price:
+        message += f"💥 Ou: R$ {pix_price:.2f} (no PIX)\n"
+    elif pix_price:
+        message += f"💥 Por apenas: R$ {pix_price:.2f} (no PIX)\n"
+
     # Informações de cartão (formatadas)
-    if product['card_info']:
-        message += f"\n💳 **Parcelamentos:**\n"
-        card_lines = product['card_info'].split('\n')
+    if card_info:
+        message += f"\n💳 *Parcelamentos:*\n"
+        card_lines = card_info.split('\n')
         for line in card_lines:
             line = line.strip()
             if line:
@@ -633,11 +744,11 @@ def format_telegram_message(product):
                     message += f"- {line}\n"
                 else:
                     message += f"{line}\n"
-    
+
     # Link do produto (afiliado)
-    message += f"\n🛒 **Garanta agora:**\n"
+    message += f"\n🛒 *Garanta agora:*\n"
     message += f"🔗 {product['affiliate_url']}"
-    
+
     return message
 
 def is_similar_product(product1, product2):
@@ -657,6 +768,11 @@ def is_similar_product(product1, product2):
     
     similarity = len(intersection) / len(union)
     return similarity >= SIMILARITY_THRESHOLD
+
+def is_duplicate_product(product_name, sent_names):
+    """Verifica se o nome do produto já foi enviado (case insensitive)"""
+    name = product_name.strip().lower()
+    return any(name == sent.strip().lower() for sent in sent_names)
 
 def check_promotions():
     """Função principal que verifica e envia promoções"""
@@ -701,7 +817,7 @@ def check_promotions():
                     product = extract_product_details(driver, product_url)
                     if product:
                         # Verifica se já foi enviado antes de continuar
-                        is_duplicate = any(is_similar_product(product, sent) for sent in sent_promotions)
+                        is_duplicate = is_duplicate_product(product['name'], sent_promotions)
                         if is_duplicate:
                             log(f"Produto já enviado: {product['name'][:50]}...")
                             product = None  # Marca como None para não processar
@@ -735,7 +851,7 @@ def check_promotions():
                 continue
             
             # Verifica se já foi enviado (verificação adicional)
-            is_duplicate = any(is_similar_product(product, sent) for sent in sent_promotions)
+            is_duplicate = is_duplicate_product(product['name'], sent_promotions)
             
             if not is_duplicate:
                 log(f"Enviando produto: {product['name'][:50]}...")
@@ -760,7 +876,7 @@ def check_promotions():
                 if success:
                     log("Mensagem enviada com sucesso")
                     # Adiciona ao histórico
-                    sent_promotions.append(product)
+                    sent_promotions.append(product['name'])
                     
                     # Mantém apenas os últimos MAX_HISTORY_SIZE
                     if len(sent_promotions) > MAX_HISTORY_SIZE:
@@ -772,6 +888,20 @@ def check_promotions():
                 
                 # Pausa entre envios
                 time.sleep(random.uniform(3, 7))
+
+                # Envia para WhatsApp
+                whatsapp_success = send_whatsapp_message_kabum(message, product.get('image_url'))
+                if whatsapp_success:
+                    if not TEST_MODE:
+                        sent_promotions_whatsapp.append(product['name'])
+                        if len(sent_promotions_whatsapp) > MAX_HISTORY_SIZE_WPP:
+                            sent_promotions_whatsapp = deque(list(sent_promotions_whatsapp)[-MAX_HISTORY_SIZE_WPP:], maxlen=MAX_HISTORY_SIZE_WPP)
+                        save_whatsapp_history(sent_promotions_whatsapp)
+                        log("Produto salvo no histórico do WhatsApp.")
+                    else:
+                        log("⚠️ Modo teste ativado - Produto não será salvo no histórico do WhatsApp")
+                else:
+                    log("Falha ao enviar para WhatsApp - Produto não será salvo no histórico do WhatsApp")
             else:
                 log(f"Produto já enviado: {product['name'][:50]}...")
         
@@ -807,6 +937,26 @@ def schedule_scraper():
     while True:
         schedule.run_pending()
         time.sleep(10)
+
+def send_whatsapp_message_kabum(message, image_url=None):
+    group = "Grupo Teste" if TEST_MODE else "Central De Descontos"
+    cmd = ['node', 'Wpp/wpp_envio.js', group, message]
+    if image_url:
+        cmd.append(image_url)
+    try:
+        subprocess.run(cmd, check=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        if e.returncode == 2:
+            log("Sessão do WhatsApp expirada. Chamando wpp_auth.js para reenviar QR code ao Telegram.")
+            subprocess.Popen(['node', 'Wpp/wpp_auth.js'])
+            log("QR code enviado para o Telegram. Escaneie para reautenticar o WhatsApp.")
+        else:
+            log(f"Erro ao enviar mensagem para WhatsApp: {e}")
+        return False
+    except Exception as e:
+        log(f"Erro inesperado ao enviar mensagem para WhatsApp: {e}")
+        return False
 
 if __name__ == "__main__":
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_GROUP_ID:
