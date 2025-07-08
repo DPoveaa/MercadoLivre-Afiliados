@@ -27,9 +27,9 @@ client.on('ready', async () => {
     if (lastTelegramQrMsgId) {
         await bot.deleteMessage(TELEGRAM_CHAT_ID, lastTelegramQrMsgId).catch(() => {});
         lastTelegramQrMsgId = null;
+        await bot.sendMessage(TELEGRAM_CHAT_ID, '✅ WhatsApp autenticado com sucesso!');
     }
-    await bot.sendMessage(TELEGRAM_CHAT_ID, '✅ WhatsApp autenticado com sucesso!');
-    // Não encerra o processo, mantém o cliente ativo
+    process.exit(0); // Encerra o processo com sucesso após autenticação
 });
 
 client.on('auth_failure', () => {

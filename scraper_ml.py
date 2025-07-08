@@ -736,5 +736,36 @@ def schedule_scraper():
             print(f"Erro no agendamento: {e}")
             time.sleep(60)  # Espera 1 minuto antes de tentar novamente
 
+def wait_for_whatsapp_auth(max_wait=120, interval=5):
+    """Tenta autenticar o WhatsApp, esperando até max_wait segundos."""
+    start = time.time()
+    avisado = False
+    while True:
+        auth_proc = subprocess.run(['node', 'Wpp/wpp_auth.js'], check=False)
+        if auth_proc.returncode == 0:
+            log("WhatsApp autenticado! Prosseguindo com o scraper.")
+            return True
+        elif auth_proc.returncode == 1:
+            if not avisado:
+                aviso = "⚠️ O WhatsApp não está autenticado! Escaneie o QR code enviado para o Telegram para reautenticar."
+                send_telegram_message(
+                    message=aviso,
+                    image_url=None,
+                    bot_token=TELEGRAM_BOT_TOKEN,
+                    chat_id=TELEGRAM_GROUP_ID
+                )
+                avisado = True
+            log("Aguardando autenticação do WhatsApp...")
+            if time.time() - start > max_wait:
+                log("Tempo limite de autenticação do WhatsApp excedido. Encerrando o script.")
+                sys.exit(1)
+            time.sleep(interval)
+        else:
+            log(f"wpp_auth.js retornou código inesperado: {auth_proc.returncode}. Encerrando o script.")
+            sys.exit(1)
+
+# Chame no início do script:
+wait_for_whatsapp_auth()
+
 if __name__ == "__main__":
     schedule_scraper()

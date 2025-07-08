@@ -21,6 +21,7 @@ import unicodedata
 import schedule
 import subprocess
 from collections import deque
+import sys
 
 load_dotenv()
 
@@ -871,6 +872,35 @@ def amazon_scraper(driver):
 
 from time import sleep
 
+def wait_for_whatsapp_auth(max_wait=120, interval=5):
+    """Tenta autenticar o WhatsApp, esperando até max_wait segundos."""
+    start = time.time()
+    avisado = False
+    while True:
+        auth_proc = subprocess.run(['node', 'Wpp/wpp_auth.js'], check=False)
+        if auth_proc.returncode == 0:
+            print("WhatsApp autenticado! Prosseguindo com o scraper.")
+            return True
+        elif auth_proc.returncode == 1:
+            if not avisado:
+                aviso = "⚠️ O WhatsApp não está autenticado! Escaneie o QR code enviado para o Telegram para reautenticar."
+                from Telegram.tl_enviar import send_telegram_message
+                send_telegram_message(
+                    message=aviso,
+                    image_url=None,
+                    bot_token=TELEGRAM_BOT_TOKEN,
+                    chat_id=TELEGRAM_GROUP_ID
+                )
+                avisado = True
+            print("Aguardando autenticação do WhatsApp...")
+            if time.time() - start > max_wait:
+                print("Tempo limite de autenticação do WhatsApp excedido. Encerrando o script.")
+                sys.exit(1)
+            time.sleep(interval)
+        else:
+            print(f"wpp_auth.js retornou código inesperado: {auth_proc.returncode}. Encerrando o script.")
+            sys.exit(1)
+
 def run_scraper():
     """Função principal que executa o scraper."""
     print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Iniciando execução do scraper...")
@@ -891,6 +921,9 @@ def run_scraper():
         service = Service(executable_path="/usr/bin/chromedriver")
 
     driver = webdriver.Chrome(service=service, options=chrome_options)
+
+    # --- Verificação de autenticação do WhatsApp no início ---
+    wait_for_whatsapp_auth()
 
     try:
         print("🔄 Iniciando coleta de links de ofertas de todas as categorias...")
