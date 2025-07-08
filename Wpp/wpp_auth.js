@@ -6,6 +6,8 @@ const TelegramBot = require('node-telegram-bot-api');
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
+console.log('Enviando QR code para o chat ID:', TELEGRAM_CHAT_ID);
+
 const bot = new TelegramBot(TELEGRAM_TOKEN);
 
 const client = new Client({
