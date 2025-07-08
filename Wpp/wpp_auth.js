@@ -6,8 +6,6 @@ const TelegramBot = require('node-telegram-bot-api');
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-console.log('Enviando QR code para o chat ID:', TELEGRAM_CHAT_ID);
-
 const bot = new TelegramBot(TELEGRAM_TOKEN);
 
 const client = new Client({
@@ -18,21 +16,10 @@ const client = new Client({
 let lastTelegramQrMsgId = null;
 
 client.on('qr', async (qrCode) => {
-    try {
-        console.log('Gerando buffer do QR code...');
-        const qrImageBuffer = await qrcode.toBuffer(qrCode);
-        if (lastTelegramQrMsgId) {
-            // Tenta apagar o QR anterior para não confundir
-            await bot.deleteMessage(TELEGRAM_CHAT_ID, lastTelegramQrMsgId).catch(() => {});
-            lastTelegramQrMsgId = null;
-        }
-        console.log('Enviando QR code para o Telegram...');
-        const sentMsg = await bot.sendPhoto(TELEGRAM_CHAT_ID, qrImageBuffer, { caption: 'Escaneie este QR code para autenticar o WhatsApp.' });
-        lastTelegramQrMsgId = sentMsg.message_id;
-        console.log('QR code enviado com sucesso para o Telegram!');
-    } catch (err) {
-        console.error('Erro ao enviar QR code para o Telegram:', err);
-    }
+    console.log('Enviando QR code para o Telegram...');
+    const qrImageBuffer = await qrcode.toBuffer(qrCode);
+    const sentMsg = await bot.sendPhoto(TELEGRAM_CHAT_ID, qrImageBuffer, { caption: 'Escaneie este QR code para autenticar o WhatsApp.' });
+    lastTelegramQrMsgId = sentMsg.message_id;
 });
 
 client.on('ready', async () => {

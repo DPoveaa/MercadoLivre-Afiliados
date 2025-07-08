@@ -736,32 +736,5 @@ def schedule_scraper():
             print(f"Erro no agendamento: {e}")
             time.sleep(60)  # Espera 1 minuto antes de tentar novamente
 
-def garantir_whatsapp_autenticado():
-    """Garante que o WhatsApp está autenticado antes de rodar o scraper."""
-    try:
-        grupo_teste = "Central De Descontos"
-        mensagem_teste = "ping-autenticacao"
-        resultado = subprocess.run(['node', 'Wpp/wpp_envio.js', grupo_teste, mensagem_teste], capture_output=True)
-        if resultado.returncode == 0:
-            log("WhatsApp já está autenticado.")
-            return
-        else:
-            log("WhatsApp não autenticado. Enviando QR code para o Telegram...")
-            subprocess.Popen(['node', 'Wpp/wpp_auth.js'])
-            for i in range(24):
-                time.sleep(5)
-                resultado = subprocess.run(['node', 'Wpp/wpp_envio.js', grupo_teste, mensagem_teste], capture_output=True)
-                if resultado.returncode == 0:
-                    log("WhatsApp autenticado com sucesso!")
-                    return
-                else:
-                    log("Aguardando autenticação do WhatsApp...")
-            log("Timeout ao aguardar autenticação do WhatsApp.")
-            sys.exit(2)
-    except Exception as e:
-        log(f"Erro ao verificar autenticação do WhatsApp: {e}")
-        sys.exit(2)
-
 if __name__ == "__main__":
-    garantir_whatsapp_autenticado()
     schedule_scraper()
