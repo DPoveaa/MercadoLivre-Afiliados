@@ -666,22 +666,41 @@ def check_promotions():
 
 def send_whatsapp_message(message, image_url=None):
     group = "Grupo Teste" if TEST_MODE else "Central De Descontos"
-    cmd = ['node', 'Wpp/wpp_envio.js', group, message]
-    if image_url:
-        cmd.append(image_url)
+    # Primeiro, verifica autenticação do WhatsApp
     try:
-        subprocess.run(cmd, check=True)
-        return True
-    except subprocess.CalledProcessError as e:
-        if e.returncode == 2:
-            log("Sessão do WhatsApp expirada. Chamando wpp_auth.js para reenviar QR code ao Telegram.")
-            subprocess.Popen(['node', 'Wpp/wpp_auth.js'])
-            log("QR code enviado para o Telegram. Escaneie para reautenticar o WhatsApp.")
+        auth_proc = subprocess.run(['node', 'Wpp/wpp_auth.js'], check=False)
+        if auth_proc.returncode == 0:
+            # Logado, pode enviar
+            cmd = ['node', 'Wpp/wpp_envio.js', group, message]
+            if image_url:
+                cmd.append(image_url)
+            # Adiciona flags de sandbox para evitar erro no Linux
+            cmd += ['--no-sandbox', '--disable-setuid-sandbox']
+            try:
+                subprocess.run(cmd, check=True)
+                return True
+            except subprocess.CalledProcessError as e:
+                log(f"Erro ao enviar mensagem para WhatsApp: {e}")
+                return False
+            except Exception as e:
+                log(f"Erro inesperado ao enviar mensagem para WhatsApp: {e}")
+                return False
+        elif auth_proc.returncode == 1:
+            # Não logado, QR code foi gerado, avisa no Telegram
+            aviso = "⚠️ O WhatsApp não está autenticado! Escaneie o QR code enviado para o Telegram para reautenticar."
+            send_telegram_message(
+                message=aviso,
+                image_url=None,
+                bot_token=TELEGRAM_BOT_TOKEN,
+                chat_id=TELEGRAM_GROUP_ID
+            )
+            log("WhatsApp não autenticado. QR code enviado para o Telegram.")
+            return False
         else:
-            log(f"Erro ao enviar mensagem para WhatsApp: {e}")
-        return False
+            log(f"wpp_auth.js retornou código inesperado: {auth_proc.returncode}")
+            return False
     except Exception as e:
-        log(f"Erro inesperado ao enviar mensagem para WhatsApp: {e}")
+        log(f"Erro ao rodar wpp_auth.js: {e}")
         return False
 
 def schedule_scraper():
@@ -744,6 +763,13 @@ def wait_for_whatsapp_auth(max_wait=120, interval=5):
         auth_proc = subprocess.run(['node', 'Wpp/wpp_auth.js'], check=False)
         if auth_proc.returncode == 0:
             log("WhatsApp autenticado! Prosseguindo com o scraper.")
+            if avisado:
+                send_telegram_message(
+                    message='✅ WhatsApp autenticado com sucesso!',
+                    image_url=None,
+                    bot_token=TELEGRAM_BOT_TOKEN,
+                    chat_id=TELEGRAM_GROUP_ID
+                )
             return True
         elif auth_proc.returncode == 1:
             if not avisado:

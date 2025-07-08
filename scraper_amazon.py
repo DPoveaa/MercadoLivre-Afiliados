@@ -880,6 +880,14 @@ def wait_for_whatsapp_auth(max_wait=120, interval=5):
         auth_proc = subprocess.run(['node', 'Wpp/wpp_auth.js'], check=False)
         if auth_proc.returncode == 0:
             print("WhatsApp autenticado! Prosseguindo com o scraper.")
+            if avisado:
+                from Telegram.tl_enviar import send_telegram_message
+                send_telegram_message(
+                    message='✅ WhatsApp autenticado com sucesso!',
+                    image_url=None,
+                    bot_token=TELEGRAM_BOT_TOKEN,
+                    chat_id=TELEGRAM_GROUP_ID
+                )
             return True
         elif auth_proc.returncode == 1:
             if not avisado:
