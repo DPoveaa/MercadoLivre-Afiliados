@@ -965,10 +965,39 @@ def send_whatsapp_message_kabum(message, image_url=None):
         log(f"Erro inesperado ao enviar mensagem para WhatsApp: {e}")
         return False
 
+def garantir_whatsapp_autenticado():
+    """Garante que o WhatsApp está autenticado antes de rodar o scraper."""
+    try:
+        # Tenta rodar o wpp_envio.js com um grupo e mensagem fake só para testar autenticação
+        grupo_teste = "Central De Descontos"
+        mensagem_teste = "ping-autenticacao"
+        resultado = subprocess.run(['node', 'Wpp/wpp_envio.js', grupo_teste, mensagem_teste], capture_output=True)
+        if resultado.returncode == 0:
+            log("WhatsApp já está autenticado.")
+            return
+        else:
+            log("WhatsApp não autenticado. Enviando QR code para o Telegram...")
+            subprocess.Popen(['node', 'Wpp/wpp_auth.js'])
+            # Tenta novamente até autenticar (timeout de 2 minutos)
+            for i in range(24):
+                time.sleep(5)
+                resultado = subprocess.run(['node', 'Wpp/wpp_envio.js', grupo_teste, mensagem_teste], capture_output=True)
+                if resultado.returncode == 0:
+                    log("WhatsApp autenticado com sucesso!")
+                    return
+                else:
+                    log("Aguardando autenticação do WhatsApp...")
+            log("Timeout ao aguardar autenticação do WhatsApp.")
+            sys.exit(2)
+    except Exception as e:
+        log(f"Erro ao verificar autenticação do WhatsApp: {e}")
+        sys.exit(2)
+
+# Chamar no início do main
 if __name__ == "__main__":
+    garantir_whatsapp_autenticado()
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_GROUP_ID:
         log("Erro: TELEGRAM_BOT_TOKEN e TELEGRAM_GROUP_ID devem estar configurados no .env")
         sys.exit(1)
-    
     log("Iniciando scraper da Kabum...")
     schedule_scraper()
