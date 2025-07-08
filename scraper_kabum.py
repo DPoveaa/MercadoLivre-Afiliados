@@ -771,8 +771,11 @@ def is_similar_product(product1, product2):
 
 def is_duplicate_product(product_name, sent_names):
     """Verifica se o nome do produto já foi enviado (case insensitive)"""
+    if not isinstance(product_name, str):
+        log(f"ATENÇÃO: product_name não é string: {product_name} ({type(product_name)})")
+        return False
     name = product_name.strip().lower()
-    return any(name == sent.strip().lower() for sent in sent_names)
+    return any(isinstance(sent, str) and name == sent.strip().lower() for sent in sent_names)
 
 def check_promotions():
     """Função principal que verifica e envia promoções"""
