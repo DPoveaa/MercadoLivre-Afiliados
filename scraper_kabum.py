@@ -772,7 +772,14 @@ def is_similar_product(product1, product2):
 def is_duplicate_product(product_name, sent_names):
     """Verifica se o nome do produto já foi enviado (case insensitive)"""
     name = product_name.strip().lower()
-    return any(name == sent.strip().lower() for sent in sent_names)
+    for sent in sent_names:
+        if isinstance(sent, dict):
+            sent_name = sent.get('name', '').strip().lower()
+        else:
+            sent_name = str(sent).strip().lower()
+        if name == sent_name:
+            return True
+    return False
 
 def check_promotions():
     """Função principal que verifica e envia promoções"""
