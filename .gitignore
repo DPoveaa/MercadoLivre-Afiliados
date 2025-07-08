@@ -21,6 +21,6 @@ __pycache__/
 auth_data/
 .wwebjs_cache
 Whatsapp/.wwebjs_cache/2.3000.1022507914.html
-used_urls_ml.json
+used_urls*
 promocoes*
 *.wwebjs_auth

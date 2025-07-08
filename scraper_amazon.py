@@ -19,6 +19,8 @@ from urllib.parse import urlparse
 import unicodedata
 
 import schedule
+import subprocess
+from collections import deque
 
 load_dotenv()
 
@@ -32,8 +34,11 @@ TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID_TESTE") if TEST_MODE else os.ge
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID_TESTE") if TEST_MODE else os.getenv("TELEGRAM_CHAT_ID")
 
 # WhatsApp
-# WHATSAPP_GROUP_NAME = os.getenv("WHATSAPP_GROUP_NAME_TESTE") if TEST_MODE else os.getenv("WHATSAPP_GROUP_NAME")
-TOP_N_OFFERS = int(os.getenv("TOP_N_OFFERS_TESTE") if TEST_MODE else os.getenv("TOP_N_OFFERS_AMAZON"))
+WHATSAPP_GROUP_NAME = os.getenv("WHATSAPP_GROUP_NAME_TESTE") if TEST_MODE else os.getenv("WHATSAPP_GROUP_NAME")
+WHATSAPP_HISTORY_FILE = 'promocoes_amazon_whatsapp.json'
+MAX_HISTORY_SIZE_WPP = 150
+
+products_per_category = int(os.getenv("TOP_N_OFFERS_TESTE"))if TEST_MODE else int(os.getenv("TOP_N_OFFERS_AMAZON"))
 
 # Load cookies from environment variable
 COOKIES_JSON = os.getenv('AMAZON_COOKIES')
@@ -102,6 +107,35 @@ AMAZON_CATEGORIES = [
         "url": "https://www.amazon.com.br/deals?ref_=nav_cs_gb&bubble-id=deals-collection-video-games"
     }
 ]
+
+USED_URLS_FILE = 'used_urls_amazon.json'
+
+def load_used_urls():
+    try:
+        with open(USED_URLS_FILE, 'r') as f:
+            return set(json.load(f))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return set()
+
+def save_used_urls(used_urls):
+    with open(USED_URLS_FILE, 'w') as f:
+        json.dump(list(used_urls), f)
+
+def get_rotated_category_urls():
+    used_urls = load_used_urls()
+    all_urls = [cat['url'] for cat in AMAZON_CATEGORIES]
+    if len(used_urls) >= len(all_urls):
+        log("Todas as categorias já foram usadas. Reiniciando histórico...")
+        used_urls.clear()
+        save_used_urls(used_urls)
+    available_urls = [url for url in all_urls if url not in used_urls]
+    num_urls = min(2, len(available_urls))
+    import random
+    selected_urls = random.sample(available_urls, num_urls)
+    used_urls.update(selected_urls)
+    save_used_urls(used_urls)
+    log(f"Categorias selecionadas: {len(selected_urls)} de {len(available_urls)} disponíveis")
+    return selected_urls
 
 def log(message):
     """Função para logging com timestamp"""
@@ -456,6 +490,92 @@ def send_telegram_message(products, driver, sent_products):
     print(f"📤 Total de produtos enviados nesta execução: {len(new_sent_products)}")
     return new_sent_products
 
+def load_whatsapp_history():
+    try:
+        if os.path.exists(WHATSAPP_HISTORY_FILE):
+            with open(WHATSAPP_HISTORY_FILE, 'r', encoding='utf-8') as f:
+                nomes = json.load(f)
+                return deque(nomes, maxlen=MAX_HISTORY_SIZE_WPP)
+        return deque(maxlen=MAX_HISTORY_SIZE_WPP)
+    except Exception as e:
+        print(f"Erro ao carregar histórico do WhatsApp: {e}")
+        return deque(maxlen=MAX_HISTORY_SIZE_WPP)
+
+def save_whatsapp_history(history: deque):
+    try:
+        with open(WHATSAPP_HISTORY_FILE, 'w', encoding='utf-8') as f:
+            json.dump(list(history), f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Erro ao salvar histórico do WhatsApp: {e}")
+
+def send_whatsapp_message(message, image_url=None):
+    group = WHATSAPP_GROUP_NAME or "Central De Descontos"
+    cmd = ['node', 'Wpp/wpp_envio.js', group, message]
+    if image_url:
+        cmd.append(image_url)
+    try:
+        subprocess.run(cmd, check=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        if e.returncode == 2:
+            log("Sessão do WhatsApp expirada. Chamando wpp_auth.js para reenviar QR code ao Telegram.")
+            subprocess.Popen(['node', 'Wpp/wpp_auth.js'])
+            log("QR code enviado para o Telegram. Escaneie para reautenticar o WhatsApp.")
+        else:
+            log(f"Erro ao enviar mensagem para WhatsApp: {e}")
+        return False
+    except Exception as e:
+        log(f"Erro inesperado ao enviar mensagem para WhatsApp: {e}")
+        return False
+
+# Função para montar mensagem no formato do Telegram (pode ser usada para WhatsApp)
+def format_amazon_message(product):
+    message_lines = []
+    message_lines.append("🔵 Amazon")
+    message_lines.append("")
+    message_lines.append(f"🏷️ {product['nome']}")
+    message_lines.append("")
+    if product.get('desconto_percentual'):
+        message_lines.append(f"📉 Desconto de {product['desconto_percentual']}% OFF")
+        message_lines.append("")
+    if product.get('avaliacao'):
+        message_lines.append(f"⭐ {product['avaliacao']}")
+        message_lines.append("")
+    if product.get('valor_original'):
+        message_lines.append(f"💸 De: {product['valor_original']}")
+        message_lines.append("")
+    message_lines.append(f"💥 Por apenas: {product['valor_desconto']}")
+    message_lines.append("")
+    if product.get('parcelamento'):
+        try:
+            message_lines.append("💳 Parcelamentos:")
+            padrao1 = re.search(r'(\d+)x de R\$\s*([\d,]+)\s*(.*)', product['parcelamento'])
+            padrao2 = re.search(r'(\d+)x\s*(.*)', product['parcelamento'])
+            padrao3 = re.search(r'.*(\d+)x.*sem juros', product['parcelamento'])
+            if padrao1:
+                qtd_parcelas = padrao1.group(1)
+                valor_parcela = f"R$ {padrao1.group(2)}"
+                status_juros = padrao1.group(3).replace("com acréscimo", "com juros")
+                message_lines.append(f"- Em até {qtd_parcelas}x {valor_parcela} {status_juros}".strip())
+            elif padrao2:
+                qtd_parcelas = padrao2.group(1)
+                status_juros = padrao2.group(2).replace("com acréscimo", "com juros")
+                message_lines.append(f"- Em até {qtd_parcelas}x {status_juros}".strip())
+            elif padrao3:
+                qtd_parcelas = padrao3.group(1)
+                message_lines.append(f"- Em até {qtd_parcelas}x sem juros")
+            else:
+                message_lines.append("- Parcelamento disponível (ver detalhes)")
+            message_lines.append("")
+        except Exception as e:
+            message_lines.append("- Condições de parcelamento no site")
+            message_lines.append("")
+    message_lines.append("🛒 Garanta agora:")
+    message_lines.append(f"🔗 {product['link']}")
+    message = "\n".join(message_lines)
+    message = re.sub(r'\n{3,}', '\n\n', message).strip()
+    return message
+
 def format_price(price_str):
     """Formata o preço adicionando pontos para separar milhares e removendo espaços extras."""
     try:
@@ -685,8 +805,10 @@ def amazon_scraper(driver):
         all_deals = []
         deals_by_category = {}
         
-        # Itera por todas as categorias
-        for category in AMAZON_CATEGORIES:
+        # --- USAR APENAS 2 CATEGORIAS ROTACIONADAS POR VEZ ---
+        selected_category_urls = get_rotated_category_urls()
+        selected_categories = [cat for cat in AMAZON_CATEGORIES if cat['url'] in selected_category_urls]
+        for category in selected_categories:
             try:
                 log(f"Processando categoria: {category['name']}")
                 driver.get(category['url'])
@@ -710,8 +832,6 @@ def amazon_scraper(driver):
                 log(f"Erro ao processar categoria {category['name']}: {e}")
                 continue
         
-        # Sempre pega até 4 produtos por categoria
-        products_per_category = 4
         log(f"Pegando até {products_per_category} produtos por categoria")
         
         selected_deals = []
@@ -763,6 +883,7 @@ def run_scraper():
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--enable-unsafe-swiftshader")
 
     if platform.system() == 'Windows':
         service = Service(ChromeDriverManager().install())
@@ -789,6 +910,7 @@ def run_scraper():
             return
 
         sent_products = load_sent_products()
+        sent_promotions_whatsapp = load_whatsapp_history()
         novos_enviados = []
         produtos_nao_enviados = []
 
@@ -819,6 +941,44 @@ def run_scraper():
                     produtos_nao_enviados.append(produto['nome'])
                     print(f"❌ Falha ao enviar produto: {produto['nome'][:50]}...")
                     
+                # Envio para WhatsApp
+                message = format_amazon_message(produto)
+                image_url = None
+                # Tenta usar a imagem principal
+                if produto.get('imagem'):
+                    print(f"[DEBUG] URL da imagem principal encontrada: {produto['imagem']}")
+                    image_url = produto['imagem']
+                # Se não tem imagem principal ou é um pixel/gif, tenta buscar alternativa
+                if (not image_url or 'grey-pixel.gif' in image_url or image_url.strip() == '') and produto.get('link'):
+                    print("[DEBUG] Tentando buscar imagem alternativa...")
+                    alt_img = get_alternative_image(driver, produto['nome'], produto['link'])
+                    if alt_img:
+                        print(f"[DEBUG] Imagem alternativa encontrada: {alt_img}")
+                        image_url = alt_img
+                    else:
+                        print("[DEBUG] Nenhuma imagem alternativa encontrada.")
+                # Se não tem imagem, não envia para WhatsApp
+                if not image_url or image_url.strip() == '' or 'grey-pixel.gif' in image_url:
+                    print(f"[DEBUG] Produto NÃO enviado para WhatsApp pois não há imagem válida: {produto.get('nome','Sem nome')}")
+                    continue
+                print(f"[DEBUG] Enviando para WhatsApp: mensagem='{message[:60]}...' imagem='{image_url}'")
+                whatsapp_success = False
+                if not any(is_similar(produto['nome'], sent) for sent in sent_promotions_whatsapp):
+                    whatsapp_success = send_whatsapp_message(message, image_url)
+                    if whatsapp_success:
+                        if not TEST_MODE:
+                            sent_promotions_whatsapp.append(produto['nome'])
+                            if len(sent_promotions_whatsapp) > MAX_HISTORY_SIZE_WPP:
+                                sent_promotions_whatsapp = deque(list(sent_promotions_whatsapp)[-MAX_HISTORY_SIZE_WPP:], maxlen=MAX_HISTORY_SIZE_WPP)
+                            save_whatsapp_history(sent_promotions_whatsapp)
+                            print(f"✅ Produto enviado para WhatsApp: {produto['nome'][:50]}...")
+                        else:
+                            print("⚠️ Modo teste ativado - Produto não será salvo no histórico do WhatsApp")
+                    else:
+                        print(f"❌ Falha ao enviar para WhatsApp: {produto['nome'][:50]}...")
+                else:
+                    print(f"⏭️ Produto já enviado para WhatsApp: {produto['nome'][:50]}...")
+
             except Exception as e:
                 produtos_nao_enviados.append(produto['nome'])
                 print(f"❌ Erro ao processar produto {produto.get('nome', 'Sem nome')}: {str(e)}")
