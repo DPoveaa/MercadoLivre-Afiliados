@@ -12,7 +12,7 @@ const bot = new TelegramBot(TELEGRAM_TOKEN);
 
 const client = new Client({
     authStrategy: new LocalAuth(),
-    puppeteer: { headless: false }
+    puppeteer: { headless: false, args: ['--no-sandbox', '--disable-setuid-sandbox'] }
 });
 
 let lastTelegramQrMsgId = null;
