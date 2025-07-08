@@ -49,7 +49,59 @@ FORCE_RUN_ON_START = os.getenv("FORCE_RUN_ON_START", "false").lower() == "true"
 
 # Configurações gerais
 SIMILARITY_THRESHOLD = 0.95  # Limiar de similaridade mais restritivo
-MAX_HISTORY_SIZE = 100  # Mantém as últimas promoções
+MAX_HISTORY_SIZE = 150  # Mantém as últimas promoções
+
+# Lista de categorias para capturar ofertas
+AMAZON_CATEGORIES = [
+    {
+        "name": "Geral",
+        "url": "https://www.amazon.com.br/deals?ref_=nav_cs_gb"
+    },
+    {
+        "name": "Alimentos e Bebidas",
+        "url": "https://www.amazon.com.br/deals?ref_=nav_cs_gb&bubble-id=deals-collection-grocery"
+    },
+    {
+        "name": "Automotivo",
+        "url": "https://www.amazon.com.br/deals?ref_=nav_cs_gb&bubble-id=deals-collection-automotive"
+    },
+    {
+        "name": "Beleza",
+        "url": "https://www.amazon.com.br/deals?ref_=nav_cs_gb&bubble-id=deals-collection-beauty"
+    },
+    {
+        "name": "Brinquedos e Jogos",
+        "url": "https://www.amazon.com.br/deals?ref_=nav_cs_gb&bubble-id=deals-collection-toys-and-games"
+    },
+    {
+        "name": "Casa",
+        "url": "https://www.amazon.com.br/deals?ref_=nav_cs_gb&bubble-id=deals-collection-home"
+    },
+    {
+        "name": "Cozinha",
+        "url": "https://www.amazon.com.br/deals?ref_=nav_cs_gb&bubble-id=deals-collection-kitchen"
+    },
+    {
+        "name": "Eletrodomésticos",
+        "url": "https://www.amazon.com.br/deals?ref_=nav_cs_gb&bubble-id=deals-collection-eletro"
+    },
+    {
+        "name": "Eletrônicos",
+        "url": "https://www.amazon.com.br/deals?ref_=nav_cs_gb&bubble-id=deals-collection-electronics"
+    },
+    {
+        "name": "Ferramentas",
+        "url": "https://www.amazon.com.br/deals?ref_=nav_cs_gb&bubble-id=deals-collection-tools"
+    },
+    {
+        "name": "Computadores",
+        "url": "https://www.amazon.com.br/deals?ref_=nav_cs_gb&bubble-id=deals-collection-computers"
+    },
+    {
+        "name": "Video Games",
+        "url": "https://www.amazon.com.br/deals?ref_=nav_cs_gb&bubble-id=deals-collection-video-games"
+    }
+]
 
 def log(message):
     """Função para logging com timestamp"""
@@ -112,49 +164,63 @@ def is_product_already_sent(product_name, sent_products):
             return True
     return False
 
-def get_deals_with_discounts(driver):
-    """Coleta descontos e links dos produtos."""
-    WebDriverWait(driver, 15).until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-testid="product-card"]'))
-    )
-    product_cards = driver.find_elements(By.CSS_SELECTOR, 'div[data-testid="product-card"]')
+def get_deals_with_discounts(driver, category_name):
+    """Coleta descontos e links dos produtos de uma categoria específica."""
+    log(f"Coletando ofertas da categoria: {category_name}")
     
-    deals = []
-    for card in product_cards:
-        try:
-            # Extrai o desconto
-            discount_element = card.find_element(
-                By.CSS_SELECTOR, 
-                'div.style_filledRoundedBadgeLabel__Vo-4g span.a-size-mini'
-            )
-            discount_text = discount_element.text.strip()
-            
-            # Tenta extrair o valor numérico do desconto
+    try:
+        WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-testid="product-card"]'))
+        )
+        product_cards = driver.find_elements(By.CSS_SELECTOR, 'div[data-testid="product-card"]')
+        
+        log(f"Encontrados {len(product_cards)} produtos na categoria {category_name}")
+        
+        deals = []
+        for card in product_cards:
             try:
-                # Remove caracteres não numéricos e converte para inteiro
-                discount = int(''.join(filter(str.isdigit, discount_text)))
-            except ValueError:
-                # Se não conseguir converter, verifica se é "Oferta" ou similar
-                if "Oferta" in discount_text or "Promoção" in discount_text:
-                    discount = 5  # Define um desconto padrão para ofertas
-                else:
-                    continue  # Pula este produto se não conseguir determinar o desconto
-            
-            # Só adiciona se o desconto for maior que 15%
-            if discount > 5:
-                # Extrai o link
-                link_element = card.find_element(
+                # Extrai o desconto
+                discount_element = card.find_element(
                     By.CSS_SELECTOR, 
-                    'a[data-testid="product-card-link"]'
+                    'div.style_filledRoundedBadgeLabel__Vo-4g span.a-size-mini'
                 )
-                link = link_element.get_attribute('href')
+                discount_text = discount_element.text.strip()
                 
-                deals.append({'discount': discount, 'link': link})
-            
-        except Exception as e:
-            print(f"[Erro] Não foi possível extrair dados do produto: {e}")
-    
-    return deals
+                # Tenta extrair o valor numérico do desconto
+                try:
+                    # Remove caracteres não numéricos e converte para inteiro
+                    discount = int(''.join(filter(str.isdigit, discount_text)))
+                except ValueError:
+                    # Se não conseguir converter, verifica se é "Oferta" ou similar
+                    if "Oferta" in discount_text or "Promoção" in discount_text:
+                        discount = 5  # Define um desconto padrão para ofertas
+                    else:
+                        continue  # Pula este produto se não conseguir determinar o desconto
+                
+                # Só adiciona se o desconto for maior que 5%
+                if discount > 5:
+                    # Extrai o link
+                    link_element = card.find_element(
+                        By.CSS_SELECTOR, 
+                        'a[data-testid="product-card-link"]'
+                    )
+                    link = link_element.get_attribute('href')
+                    
+                    deals.append({
+                        'discount': discount, 
+                        'link': link,
+                        'category': category_name
+                    })
+                
+            except Exception as e:
+                print(f"[Erro] Não foi possível extrair dados do produto na categoria {category_name}: {e}")
+        
+        log(f"Coletados {len(deals)} produtos com desconto > 5% na categoria {category_name}")
+        return deals
+        
+    except Exception as e:
+        log(f"Erro ao coletar ofertas da categoria {category_name}: {e}")
+        return []
 
 def get_alternative_image(driver, product_name, product_url):
     """Tenta obter uma imagem alternativa do produto."""
@@ -279,18 +345,32 @@ def send_telegram_message(products, driver, sent_products):
                 print(f"Produto já enviado anteriormente: {product['nome']}")
                 continue
 
-            # Constrói mensagem gradualmente
-            message = "🔵 *Amazon*\n\n"
-            message += f"🏷️ *{product['nome']}*\n"
+            # Monta mensagem no padrão solicitado, com uma linha em branco entre cada campo
+            message_lines = []
+            message_lines.append("🔵 Amazon")
+            message_lines.append("")
+            message_lines.append(f"🏷️ {product['nome']}")
+            message_lines.append("")
+
             if product.get('desconto_percentual'):
-                message += f"\n📉 *Desconto de {product['desconto_percentual']}% OFF*\n"
+                message_lines.append(f"📉 Desconto de {product['desconto_percentual']}% OFF")
+                message_lines.append("")
+
             if product.get('avaliacao'):
-                message += f"\n⭐ *{product['avaliacao']}*\n"
-            message += f"\n💸 *De:* {product.get('valor_original')}\n"
-            message += f"\n💥 *Por apenas:* {product['valor_desconto']}"
+                message_lines.append(f"⭐ {product['avaliacao']}")
+                message_lines.append("")
+
+            if product.get('valor_original'):
+                message_lines.append(f"💸 De: {product['valor_original']}")
+                message_lines.append("")
+
+            message_lines.append(f"💥 Por apenas: {product['valor_desconto']}")
+            message_lines.append("")
+
+            # Parcelamento
             if product.get('parcelamento'):
                 try:
-                    message += "\n\n💳 *Parcelamentos:*"
+                    message_lines.append("💳 Parcelamentos:")
                     padrao1 = re.search(r'(\d+)x de R\$\s*([\d,]+)\s*(.*)', product['parcelamento'])
                     padrao2 = re.search(r'(\d+)x\s*(.*)', product['parcelamento'])
                     padrao3 = re.search(r'.*(\d+)x.*sem juros', product['parcelamento'])
@@ -298,27 +378,39 @@ def send_telegram_message(products, driver, sent_products):
                         qtd_parcelas = padrao1.group(1)
                         valor_parcela = f"R$ {padrao1.group(2)}"
                         status_juros = padrao1.group(3).replace("com acréscimo", "com juros")
-                        message += f"\n- {qtd_parcelas}x de {valor_parcela} {status_juros}"
+                        message_lines.append(f"- Em até {qtd_parcelas}x {valor_parcela} {status_juros}".strip())
                     elif padrao2:
                         qtd_parcelas = padrao2.group(1)
                         status_juros = padrao2.group(2).replace("com acréscimo", "com juros")
-                        message += f"\n- Em até {qtd_parcelas}x {status_juros}"
+                        message_lines.append(f"- Em até {qtd_parcelas}x {status_juros}".strip())
                     elif padrao3:
                         qtd_parcelas = padrao3.group(1)
-                        message += f"\n- Em até {qtd_parcelas}x sem juros"
+                        message_lines.append(f"- Em até {qtd_parcelas}x sem juros")
                     else:
-                        message += "\n- Parcelamento disponível (ver detalhes)"
+                        message_lines.append("- Parcelamento disponível (ver detalhes)")
+                    message_lines.append("")
                 except Exception as e:
                     print(f"Erro ao processar parcelamento: {str(e)}")
-                    message += "\n- Condições de parcelamento no site"
-            message += "\n\n🛒 *Garanta agora:*"
-            message += f"\n🔗 {product['link']}"
+                    message_lines.append("- Condições de parcelamento no site")
+                    message_lines.append("")
+
+            message_lines.append("🛒 Garanta agora:")
+            message_lines.append(f"🔗 {product['link']}")
+
+            # Junta tudo, removendo quebras de linha duplicadas
+            message = "\n".join(message_lines)
+            message = re.sub(r'\n{3,}', '\n\n', message).strip()
+
+            # Tenta enviar com imagem primeiro
             image_url = None
             if product.get('imagem'):
                 if is_valid_image_url(product['imagem']):
                     image_url = product['imagem']
                 else:
                     image_url = get_alternative_image(driver, product['nome'], product['link'])
+            
+            success = False
+            
             if image_url:
                 try:
                     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
@@ -330,8 +422,14 @@ def send_telegram_message(products, driver, sent_products):
                     }
                     response = requests.post(url, data=payload, timeout=10)
                     response.raise_for_status()
+                    success = True
+                    print(f"✅ Mensagem enviada com imagem: {product['nome'][:50]}...")
                 except Exception as e:
-                    print(f"Erro ao enviar com imagem, tentando sem imagem: {e}")
+                    print(f"❌ Erro ao enviar com imagem, tentando sem imagem: {e}")
+            
+            # Se não conseguiu com imagem ou não tem imagem, tenta sem
+            if not success:
+                try:
                     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
                     payload = {
                         'chat_id': TELEGRAM_GROUP_ID,
@@ -340,21 +438,22 @@ def send_telegram_message(products, driver, sent_products):
                     }
                     response = requests.post(url, data=payload)
                     response.raise_for_status()
+                    success = True
+                    print(f"✅ Mensagem enviada sem imagem: {product['nome'][:50]}...")
+                except Exception as e:
+                    print(f"❌ Falha ao enviar mensagem: {e}")
+            
+            if success:
+                new_sent_products.append(product['nome'])
             else:
-                url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-                payload = {
-                    'chat_id': TELEGRAM_GROUP_ID,
-                    'text': message,
-                    'parse_mode': 'Markdown'
-                }
-                response = requests.post(url, data=payload)
-                response.raise_for_status()
-            print(f"Mensagem enviada: {product['nome']}")
-            new_sent_products.append(product['nome'])
-            time.sleep(3)
+                print(f"❌ Falha total ao enviar produto: {product['nome']}")
+            
+            time.sleep(3)  # Delay entre mensagens
+            
         except Exception as e:
-            print(f"Falha ao enviar {product.get('nome')}: {str(e)}")
+            print(f"❌ Erro crítico ao processar produto {product.get('nome', 'Sem nome')}: {str(e)}")
 
+    print(f"📤 Total de produtos enviados nesta execução: {len(new_sent_products)}")
     return new_sent_products
 
 def format_price(price_str):
@@ -375,7 +474,10 @@ def generate_affiliate_links(driver, product_links):
     """Gera links de afiliados e coleta dados do produto"""
     product_data = []
 
-    for url in product_links:
+    for url_info in product_links:
+        url = url_info['link']
+        category = url_info.get('category', 'Geral')
+        
         product_info = {
             'link': None,
             'nome': None,
@@ -384,7 +486,8 @@ def generate_affiliate_links(driver, product_links):
             'desconto_percentual': None,
             'avaliacao': None,
             'parcelamento': None,
-            'imagem': None
+            'imagem': None,
+            'categoria': category
         }
 
         try:
@@ -551,7 +654,8 @@ def generate_affiliate_links(driver, product_links):
 
     return product_data
 
-def amazon_scraper(driver):  # Modificado para receber o driver como parâmetro
+def amazon_scraper(driver):
+    """Scraper principal que coleta ofertas de todas as categorias"""
     try:
         driver.get("https://www.amazon.com.br")
         driver.delete_all_cookies()  # Limpar cookies existentes
@@ -578,17 +682,68 @@ def amazon_scraper(driver):  # Modificado para receber o driver como parâmetro
             except Exception as e:
                 print(f"Erro ao adicionar cookie {cookie.get('name')}: {str(e)}")
 
-        driver.get("https://www.amazon.com.br/deals?ref_=nav_cs_gb")
-        WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located((By.ID, "nav-link-accountList"))
-        )
-
-        deals = get_deals_with_discounts(driver)
+        all_deals = []
+        deals_by_category = {}
         
-        sorted_deals = sorted(deals, key=lambda x: x['discount'], reverse=True)
-        top_n_links = [deal['link'] for deal in sorted_deals[:TOP_N_OFFERS]]
+        # Itera por todas as categorias
+        for category in AMAZON_CATEGORIES:
+            try:
+                log(f"Processando categoria: {category['name']}")
+                driver.get(category['url'])
+                
+                # Aguarda a página carregar
+                WebDriverWait(driver, 15).until(
+                    EC.presence_of_element_located((By.ID, "nav-link-accountList"))
+                )
+                
+                # Coleta ofertas desta categoria
+                category_deals = get_deals_with_discounts(driver, category['name'])
+                
+                # Armazena ofertas por categoria
+                deals_by_category[category['name']] = category_deals
+                all_deals.extend(category_deals)
+                
+                # Delay entre categorias para evitar sobrecarga
+                time.sleep(3)
+                
+            except Exception as e:
+                log(f"Erro ao processar categoria {category['name']}: {e}")
+                continue
         
-        return top_n_links
+        # Sempre pega até 4 produtos por categoria
+        products_per_category = 4
+        log(f"Pegando até {products_per_category} produtos por categoria")
+        
+        selected_deals = []
+        
+        # Seleciona os melhores produtos de cada categoria
+        for category_name, category_deals in deals_by_category.items():
+            if not category_deals:
+                continue
+                
+            # Ordena ofertas desta categoria por desconto
+            sorted_category_deals = sorted(category_deals, key=lambda x: x['discount'], reverse=True)
+            
+            # Pega os melhores produtos desta categoria
+            best_from_category = sorted_category_deals[:products_per_category]
+            selected_deals.extend(best_from_category)
+            
+            log(f"Categoria '{category_name}': {len(best_from_category)} produtos selecionados (descontos: {[d['discount'] for d in best_from_category]})")
+        
+        log(f"Total de ofertas coletadas de todas as categorias: {len(all_deals)}")
+        log(f"Total de produtos selecionados para envio: {len(selected_deals)}")
+        
+        # Log detalhado por categoria
+        category_counts = {}
+        for deal in selected_deals:
+            cat = deal['category']
+            category_counts[cat] = category_counts.get(cat, 0) + 1
+        
+        log("Distribuição final por categoria:")
+        for cat, count in category_counts.items():
+            log(f"  - {cat}: {count} produtos")
+        
+        return selected_deals
 
     except Exception as e:
         print(f"[Erro no scraper] {e}")
@@ -617,36 +772,77 @@ def run_scraper():
     driver = webdriver.Chrome(service=service, options=chrome_options)
 
     try:
-        print("🔄 Iniciando coleta de links de ofertas...")
+        print("🔄 Iniciando coleta de links de ofertas de todas as categorias...")
         deal_links = amazon_scraper(driver)
         print(f"✅ Links coletados: {len(deal_links)}")
 
-        if deal_links:
-            print("🔄 Gerando links de afiliados e coletando dados dos produtos...")
-            products_data = generate_affiliate_links(driver, deal_links)
-            print(f"✅ Dados de {len(products_data)} produtos coletados com sucesso")
+        if not deal_links:
+            print("❌ Nenhum link de oferta encontrado")
+            return
 
-            sent_products = load_sent_products()
-            novos_enviados = []
+        print("🔄 Gerando links de afiliados e coletando dados dos produtos...")
+        products_data = generate_affiliate_links(driver, deal_links)
+        print(f"✅ Dados de {len(products_data)} produtos coletados com sucesso")
 
-            for produto in products_data:
-                # Checa e envia só se não foi enviado
-                if not is_product_already_sent(produto['nome'], sent_products):
-                    enviado_telegram = send_telegram_message([produto], driver, sent_products)
+        if not products_data:
+            print("❌ Nenhum produto foi processado com sucesso")
+            return
+
+        sent_products = load_sent_products()
+        novos_enviados = []
+        produtos_nao_enviados = []
+
+        print(f"📊 Processando {len(products_data)} produtos para envio...")
+        
+        for i, produto in enumerate(products_data, 1):
+            print(f"📦 Processando produto {i}/{len(products_data)}: {produto.get('nome', 'Sem nome')[:50]}...")
+            
+            # Checa se já foi enviado
+            if is_product_already_sent(produto['nome'], sent_products):
+                print(f"⏭️ Produto já enviado anteriormente: {produto['nome'][:50]}...")
+                continue
+
+            try:
+                # Tenta enviar o produto
+                enviado_telegram = send_telegram_message([produto], driver, sent_products)
+                
+                if enviado_telegram:
                     for nome_produto in enviado_telegram:
                         sent_products.append(nome_produto)
                         novos_enviados.append(nome_produto)
-                        # Remove o mais antigo se passar do limite
-                        if len(sent_products) > MAX_HISTORY_SIZE:
-                            sent_products = sent_products[-MAX_HISTORY_SIZE:]
-                    sleep(1)
+                        print(f"✅ Produto enviado com sucesso: {nome_produto[:50]}...")
+                    
+                    # Remove o mais antigo se passar do limite
+                    if len(sent_products) > MAX_HISTORY_SIZE:
+                        sent_products = sent_products[-MAX_HISTORY_SIZE:]
+                else:
+                    produtos_nao_enviados.append(produto['nome'])
+                    print(f"❌ Falha ao enviar produto: {produto['nome'][:50]}...")
+                    
+            except Exception as e:
+                produtos_nao_enviados.append(produto['nome'])
+                print(f"❌ Erro ao processar produto {produto.get('nome', 'Sem nome')}: {str(e)}")
+            
+            sleep(1)  # Delay entre produtos
 
-            if not TEST_MODE and novos_enviados:
-                save_sent_products(sent_products)
-                print(f"✅ Produtos salvos: {novos_enviados}")
+        # Resumo final
+        print(f"\n📈 RESUMO DA EXECUÇÃO:")
+        print(f"   • Total de produtos processados: {len(products_data)}")
+        print(f"   • Produtos enviados com sucesso: {len(novos_enviados)}")
+        print(f"   • Produtos não enviados: {len(produtos_nao_enviados)}")
+        
+        if novos_enviados:
+            print(f"   • Produtos enviados: {[nome[:30] + '...' if len(nome) > 30 else nome for nome in novos_enviados]}")
+        
+        if produtos_nao_enviados:
+            print(f"   • Produtos não enviados: {[nome[:30] + '...' if len(nome) > 30 else nome for nome in produtos_nao_enviados]}")
 
-            if TEST_MODE:
-                print("⚠️ Modo teste ativado - Produtos não foram realmente salvos")
+        if not TEST_MODE and novos_enviados:
+            save_sent_products(sent_products)
+            print(f"✅ Produtos salvos no histórico: {len(novos_enviados)}")
+
+        if TEST_MODE:
+            print("⚠️ Modo teste ativado - Produtos não foram realmente salvos")
 
     except Exception as e:
         print(f"❌ Erro durante a execução do scraper: {e}")
