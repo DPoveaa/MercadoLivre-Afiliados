@@ -510,17 +510,24 @@ def save_whatsapp_history(history: deque):
         print(f"Erro ao salvar histórico do WhatsApp: {e}")
 
 def clear_whatsapp_auth():
-    """Força a limpeza do diretório de autenticação do WhatsApp"""
+    """Força a limpeza do WhatsApp"""
     try:
         log("Forçando limpeza do diretório de autenticação do WhatsApp...")
-        subprocess.run(['node', 'Wpp/clear_auth.js'], check=True)
+        import shutil
+        import os
+        
+        # Remove o diretório .wwebjs_auth se existir
+        auth_dir = os.path.join(os.getcwd(), '.wwebjs_auth')
+        if os.path.exists(auth_dir):
+            shutil.rmtree(auth_dir)
+            log("Diretório de autenticação removido.")
+        else:
+            log("Diretório de autenticação não encontrado.")
+        
         log("Limpeza do diretório de autenticação concluída.")
         return True
-    except subprocess.CalledProcessError as e:
-        log(f"Erro ao limpar diretório de autenticação: {e}")
-        return False
     except Exception as e:
-        log(f"Erro inesperado ao limpar diretório de autenticação: {e}")
+        log(f"Erro ao limpar diretório de autenticação: {e}")
         return False
 
 def send_whatsapp_message(message, image_url=None):
