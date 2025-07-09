@@ -17,6 +17,18 @@ if (fs.existsSync(authDir)) {
     try {
         const files = fs.readdirSync(authDir);
         console.log('Arquivos de autenticação:', files);
+        
+        // Verifica se os arquivos essenciais existem
+        const essentialFiles = ['session.data', 'session.data.json'];
+        const hasEssentialFiles = essentialFiles.some(file => files.includes(file));
+        
+        if (!hasEssentialFiles) {
+            console.log('Arquivos essenciais de autenticação não encontrados. Removendo diretório...');
+            fs.rmSync(authDir, { recursive: true, force: true });
+            console.log('Diretório de autenticação removido.');
+        } else {
+            console.log('Arquivos de autenticação parecem válidos.');
+        }
     } catch (error) {
         console.log('Erro ao ler diretório de autenticação:', error.message);
         console.log('Removendo diretório corrompido...');
@@ -82,6 +94,17 @@ client.on('ready', async () => {
 client.on('auth_failure', () => {
     console.error('Falha na autenticação. Será necessário escanear o QR novamente.');
     bot.sendMessage(TELEGRAM_CHAT_ID, '❌ Falha na autenticação do WhatsApp. Escaneie o QR code novamente.');
+    
+    // Remove o diretório de autenticação corrompido
+    try {
+        if (fs.existsSync(authDir)) {
+            fs.rmSync(authDir, { recursive: true, force: true });
+            console.log('Diretório de autenticação removido devido à falha.');
+        }
+    } catch (error) {
+        console.log('Erro ao remover diretório após falha:', error.message);
+    }
+    
     process.exit(1); // Sai com código de erro
 });
 
@@ -106,8 +129,14 @@ process.on('unhandledRejection', (reason, promise) => {
 setTimeout(() => {
     if (!qrSent) {
         console.log('Nenhum QR code foi enviado. Verificando se já está autenticado...');
-        // Se não enviou QR code, provavelmente já está autenticado
-        process.exit(0);
+        // Se não enviou QR code em 10 segundos, verifica se realmente está autenticado
+        // Aguarda mais um pouco para ver se o cliente realmente conecta
+        setTimeout(() => {
+            if (!qrSent) {
+                console.log('Cliente parece estar autenticado. Saindo com sucesso.');
+                process.exit(0);
+            }
+        }, 5000); // Aguarda mais 5 segundos para confirmar
     }
 }, 10000); // Aguarda 10 segundos
 

@@ -510,7 +510,7 @@ def save_whatsapp_history(history: deque):
         print(f"Erro ao salvar histórico do WhatsApp: {e}")
 
 def clear_whatsapp_auth():
-    """Força a limpeza do WhatsApp"""
+    """Força a limpeza do diretório de autenticação do WhatsApp"""
     try:
         log("Forçando limpeza do diretório de autenticação do WhatsApp...")
         import shutil
@@ -523,6 +523,17 @@ def clear_whatsapp_auth():
             log("Diretório de autenticação removido.")
         else:
             log("Diretório de autenticação não encontrado.")
+        
+        # Também remove outros arquivos que podem estar relacionados
+        possible_files = ['.wwebjs_auth', 'session.data', 'session.data.json']
+        for file in possible_files:
+            file_path = os.path.join(os.getcwd(), file)
+            if os.path.exists(file_path):
+                if os.path.isdir(file_path):
+                    shutil.rmtree(file_path)
+                else:
+                    os.remove(file_path)
+                log(f"Arquivo/diretório removido: {file}")
         
         log("Limpeza do diretório de autenticação concluída.")
         return True
