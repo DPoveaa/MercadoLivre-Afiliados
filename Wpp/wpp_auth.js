@@ -28,12 +28,12 @@ if (fs.existsSync(authDir)) {
             try {
                 const sessionPath = path.join(authDir, 'session');
                 const sessionStats = fs.statSync(sessionPath);
-                // Se o arquivo session existe e tem tamanho > 0, considera válido
-                if (sessionStats.size > 0) {
+                // Se o arquivo session existe e tem tamanho > 100 bytes, considera válido
+                if (sessionStats.size > 100) {
                     sessionValid = true;
-                    console.log('Arquivo session encontrado e válido.');
+                    console.log(`Arquivo session encontrado e válido (${sessionStats.size} bytes).`);
                 } else {
-                    console.log('Arquivo session encontrado mas vazio.');
+                    console.log(`Arquivo session encontrado mas muito pequeno (${sessionStats.size} bytes).`);
                 }
             } catch (error) {
                 console.log('Erro ao verificar arquivo session:', error.message);
@@ -45,7 +45,7 @@ if (fs.existsSync(authDir)) {
             fs.rmSync(authDir, { recursive: true, force: true });
             console.log('Diretório de autenticação removido.');
         } else {
-            console.log('Arquivos de autenticação parecem válidos.');
+            console.log('Arquivos de autenticação parecem válidos. Tentando conectar...');
         }
     } catch (error) {
         console.log('Erro ao ler diretório de autenticação:', error.message);
@@ -76,6 +76,18 @@ const AUTH_TIMEOUT = 120000; // 2 minutos
 client.on('qr', async (qrCode) => {
     console.log('Enviando QR code para o Telegram...');
     qrSent = true;
+    
+    // Se chegou aqui, significa que os arquivos de sessão não estão funcionando
+    // Remove o diretório de autenticação para forçar nova autenticação
+    try {
+        if (fs.existsSync(authDir)) {
+            console.log('QR code enviado - arquivos de sessão não funcionaram. Removendo diretório...');
+            fs.rmSync(authDir, { recursive: true, force: true });
+            console.log('Diretório de autenticação removido para nova autenticação.');
+        }
+    } catch (error) {
+        console.log('Erro ao remover diretório:', error.message);
+    }
     
     // Limpa timeout anterior se existir
     if (authTimeout) {
@@ -129,6 +141,17 @@ client.on('auth_failure', () => {
 client.on('disconnected', (reason) => {
     console.log('Cliente desconectado:', reason);
     bot.sendMessage(TELEGRAM_CHAT_ID, `⚠️ WhatsApp desconectado: ${reason}`);
+    
+    // Remove o diretório de autenticação se foi desconectado
+    try {
+        if (fs.existsSync(authDir)) {
+            console.log('Removendo diretório de autenticação devido à desconexão...');
+            fs.rmSync(authDir, { recursive: true, force: true });
+        }
+    } catch (error) {
+        console.log('Erro ao remover diretório após desconexão:', error.message);
+    }
+    
     process.exit(1); // Sai com código de erro
 });
 
@@ -156,6 +179,6 @@ setTimeout(() => {
             }
         }, 5000); // Aguarda mais 5 segundos para confirmar
     }
-}, 10000); // Aguarda 10 segundos
+}, 15000); // Aumentado para 15 segundos para dar mais tempo
 
 client.initialize(); 
