@@ -392,7 +392,16 @@ def extract_product_details(driver, product_url):
                             old_price = max(valores_genericos)
                             log(f"Preço original encontrado (fallback genérico): {old_price}")
                         else:
-                            old_price = None
+                            # Novo fallback: busca dentro de div com flex justify-between
+                            try:
+                                flex_container = driver.find_element(By.CSS_SELECTOR, "div.flex.justify-between.items-start")
+                                line_through_span = flex_container.find_element(By.CSS_SELECTOR, "span.text-black-600.text-xs.font-normal.line-through")
+                                old_price_text = line_through_span.text.strip()
+                                old_price = clean_price(old_price_text)
+                                log(f"Preço original encontrado (flex container): {old_price}")
+                            except Exception as e4:
+                                log(f"Preço original não encontrado nem no flex container: {str(e4)}")
+                                old_price = None
                     except Exception as e3:
                         log(f"Preço original não encontrado nem no fallback genérico: {str(e3)}")
                         old_price = None
