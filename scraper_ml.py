@@ -664,6 +664,20 @@ def check_promotions():
             log("Fechando o navegador...")
             driver.quit()
 
+def clear_whatsapp_auth():
+    """Força a limpeza do diretório de autenticação do WhatsApp"""
+    try:
+        log("Forçando limpeza do diretório de autenticação do WhatsApp...")
+        subprocess.run(['node', 'Wpp/clear_auth.js'], check=True)
+        log("Limpeza do diretório de autenticação concluída.")
+        return True
+    except subprocess.CalledProcessError as e:
+        log(f"Erro ao limpar diretório de autenticação: {e}")
+        return False
+    except Exception as e:
+        log(f"Erro inesperado ao limpar diretório de autenticação: {e}")
+        return False
+
 def send_whatsapp_message(message, image_url=None):
     group = "Grupo Teste" if TEST_MODE else "Central De Descontos"
     # Primeiro, verifica autenticação do WhatsApp
@@ -759,6 +773,9 @@ def wait_for_whatsapp_auth(max_wait=120, interval=5):
     """Tenta autenticar o WhatsApp, esperando até max_wait segundos."""
     start = time.time()
     avisado = False
+    tentativas = 0
+    max_tentativas = 3
+    
     while True:
         auth_proc = subprocess.run(['node', 'Wpp/wpp_auth.js'], check=False)
         if auth_proc.returncode == 0:
@@ -772,6 +789,7 @@ def wait_for_whatsapp_auth(max_wait=120, interval=5):
                 )
             return True
         elif auth_proc.returncode == 1:
+            tentativas += 1
             if not avisado:
                 aviso = "⚠️ O WhatsApp não está autenticado! Escaneie o QR code enviado para o Telegram para reautenticar."
                 send_telegram_message(
@@ -781,7 +799,20 @@ def wait_for_whatsapp_auth(max_wait=120, interval=5):
                     chat_id=TELEGRAM_GROUP_ID
                 )
                 avisado = True
-            log("Aguardando autenticação do WhatsApp...")
+            
+            log(f"Aguardando autenticação do WhatsApp... (tentativa {tentativas}/{max_tentativas})")
+            
+            # Se já tentou várias vezes, força limpeza do diretório
+            if tentativas >= max_tentativas:
+                log("Múltiplas tentativas falharam. Forçando limpeza do diretório de autenticação...")
+                if clear_whatsapp_auth():
+                    tentativas = 0  # Reset contador
+                    avisado = False  # Reset aviso
+                    log("Limpeza concluída. Tentando autenticação novamente...")
+                else:
+                    log("Falha na limpeza do diretório. Encerrando o script.")
+                    sys.exit(1)
+            
             if time.time() - start > max_wait:
                 log("Tempo limite de autenticação do WhatsApp excedido. Encerrando o script.")
                 sys.exit(1)
