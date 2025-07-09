@@ -19,11 +19,29 @@ if (fs.existsSync(authDir)) {
         console.log('Arquivos de autenticação:', files);
         
         // Verifica se os arquivos essenciais existem
-        const essentialFiles = ['session.data', 'session.data.json'];
+        const essentialFiles = ['session', 'session.data', 'session.data.json'];
         const hasEssentialFiles = essentialFiles.some(file => files.includes(file));
         
-        if (!hasEssentialFiles) {
-            console.log('Arquivos essenciais de autenticação não encontrados. Removendo diretório...');
+        // Verifica também se o arquivo session tem conteúdo válido
+        let sessionValid = false;
+        if (files.includes('session')) {
+            try {
+                const sessionPath = path.join(authDir, 'session');
+                const sessionStats = fs.statSync(sessionPath);
+                // Se o arquivo session existe e tem tamanho > 0, considera válido
+                if (sessionStats.size > 0) {
+                    sessionValid = true;
+                    console.log('Arquivo session encontrado e válido.');
+                } else {
+                    console.log('Arquivo session encontrado mas vazio.');
+                }
+            } catch (error) {
+                console.log('Erro ao verificar arquivo session:', error.message);
+            }
+        }
+        
+        if (!hasEssentialFiles || !sessionValid) {
+            console.log('Arquivos de autenticação inválidos ou incompletos. Removendo diretório...');
             fs.rmSync(authDir, { recursive: true, force: true });
             console.log('Diretório de autenticação removido.');
         } else {
