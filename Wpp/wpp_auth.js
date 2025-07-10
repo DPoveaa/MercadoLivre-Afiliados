@@ -27,7 +27,7 @@ const client = new Client({
         clientId: 'whatsapp-client'
     }),
     puppeteer: { 
-        headless: false, 
+        headless: true, 
         args: [
             '--no-sandbox', 
             '--disable-setuid-sandbox',
