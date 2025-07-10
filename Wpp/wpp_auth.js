@@ -10,152 +10,143 @@ const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 const bot = new TelegramBot(TELEGRAM_TOKEN);
 
-// Verifica se o diretório de autenticação existe e está corrompido
+// Verifica se o diretório de autenticação existe
 const authDir = path.join(process.cwd(), '.wwebjs_auth');
 if (fs.existsSync(authDir)) {
-    console.log('Diretório de autenticação encontrado:', authDir);
-    try {
-        const files = fs.readdirSync(authDir);
-        console.log('Arquivos de autenticação:', files);
-        
-        // Verifica se os arquivos essenciais existem
-        const essentialFiles = ['session', 'session.data', 'session.data.json'];
-        const hasEssentialFiles = essentialFiles.some(file => files.includes(file));
-        
-        // Verifica também se o arquivo session tem conteúdo válido
-        let sessionValid = false;
-        if (files.includes('session')) {
-            try {
-                const sessionPath = path.join(authDir, 'session');
-                const sessionStats = fs.statSync(sessionPath);
-                // Se o arquivo session existe e tem tamanho > 0, considera válido
-                if (sessionStats.size > 0) {
-                    sessionValid = true;
-                    console.log('Arquivo session encontrado e válido.');
-                } else {
-                    console.log('Arquivo session encontrado mas vazio.');
-                }
-            } catch (error) {
-                console.log('Erro ao verificar arquivo session:', error.message);
-            }
-        }
-        
-        if (!hasEssentialFiles || !sessionValid) {
-            console.log('Arquivos de autenticação inválidos ou incompletos. Removendo diretório...');
-            fs.rmSync(authDir, { recursive: true, force: true });
-            console.log('Diretório de autenticação removido.');
-        } else {
-            console.log('Arquivos de autenticação parecem válidos.');
-        }
-    } catch (error) {
-        console.log('Erro ao ler diretório de autenticação:', error.message);
-        console.log('Removendo diretório corrompido...');
-        try {
-            fs.rmSync(authDir, { recursive: true, force: true });
-            console.log('Diretório de autenticação removido.');
-        } catch (rmError) {
-            console.log('Erro ao remover diretório:', rmError.message);
-        }
+    const files = fs.readdirSync(authDir);
+    const sessionFiles = ['session', 'session.data', 'session.data.json', 'session-whatsapp-client'];
+    const hasAnySessionFile = sessionFiles.some(file => files.includes(file));
+    
+    if (!hasAnySessionFile) {
+        fs.rmSync(authDir, { recursive: true, force: true });
     }
-} else {
-    console.log('Diretório de autenticação não encontrado. Será criado automaticamente.');
 }
 
 const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] }
+    authStrategy: new LocalAuth({
+        clientId: 'whatsapp-client'
+    }),
+    puppeteer: { 
+        headless: false, 
+        args: [
+            '--no-sandbox', 
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--disable-gpu',
+            '--disable-web-security',
+            '--disable-features=VizDisplayCompositor',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding'
+        ] 
+    }
 });
 
 let lastTelegramQrMsgId = null;
 let qrSent = false;
 let authTimeout = null;
+let qrCount = 0;
 
 // Timeout para autenticação (2 minutos)
-const AUTH_TIMEOUT = 120000; // 2 minutos
+const AUTH_TIMEOUT = 120000;
 
 client.on('qr', async (qrCode) => {
-    console.log('Enviando QR code para o Telegram...');
+    qrCount++;
     qrSent = true;
     
-    // Limpa timeout anterior se existir
     if (authTimeout) {
         clearTimeout(authTimeout);
     }
     
-    // Define novo timeout
     authTimeout = setTimeout(() => {
-        console.log('Timeout de autenticação atingido. Saindo com código 1.');
+        console.log('Timeout de autenticação atingido.');
         process.exit(1);
     }, AUTH_TIMEOUT);
     
     const qrImageBuffer = await qrcode.toBuffer(qrCode);
-    const sentMsg = await bot.sendPhoto(TELEGRAM_CHAT_ID, qrImageBuffer, { caption: 'Escaneie este QR code para autenticar o WhatsApp.' });
+    const caption = `🔐 QR Code #${qrCount} - Escaneie para autenticar o WhatsApp\n\n⚠️ Se não funcionar, aguarde o próximo QR code.`;
+    
+    // Deleta QR code anterior se existir
+    if (lastTelegramQrMsgId) {
+        await bot.deleteMessage(TELEGRAM_CHAT_ID, lastTelegramQrMsgId).catch(() => {});
+    }
+    
+    const sentMsg = await bot.sendPhoto(TELEGRAM_CHAT_ID, qrImageBuffer, { caption });
     lastTelegramQrMsgId = sentMsg.message_id;
+});
+
+client.on('loading_screen', (percent, message) => {
+    if (percent === 100) {
+        console.log('WhatsApp carregado completamente.');
+    }
+});
+
+client.on('authenticated', () => {
+    console.log('Cliente autenticado com sucesso!');
+});
+
+client.on('auth_failure', (msg) => {
+    console.error('Falha na autenticação:', msg);
+    bot.sendMessage(TELEGRAM_CHAT_ID, '❌ Falha na autenticação do WhatsApp. Escaneie o QR code novamente.');
+    
+    try {
+        if (fs.existsSync(authDir)) {
+            fs.rmSync(authDir, { recursive: true, force: true });
+        }
+    } catch (error) {
+        console.log('Erro ao remover diretório:', error.message);
+    }
+    
+    process.exit(1);
 });
 
 client.on('ready', async () => {
     console.log('Cliente está pronto!');
     
-    // Limpa timeout se autenticado
     if (authTimeout) {
         clearTimeout(authTimeout);
     }
     
     if (lastTelegramQrMsgId) {
         await bot.deleteMessage(TELEGRAM_CHAT_ID, lastTelegramQrMsgId).catch(() => {});
-        lastTelegramQrMsgId = null;
         await bot.sendMessage(TELEGRAM_CHAT_ID, '✅ WhatsApp autenticado com sucesso!');
     }
-    process.exit(0); // Encerra o processo com sucesso após autenticação
-});
-
-client.on('auth_failure', () => {
-    console.error('Falha na autenticação. Será necessário escanear o QR novamente.');
-    bot.sendMessage(TELEGRAM_CHAT_ID, '❌ Falha na autenticação do WhatsApp. Escaneie o QR code novamente.');
     
-    // Remove o diretório de autenticação corrompido
-    try {
-        if (fs.existsSync(authDir)) {
-            fs.rmSync(authDir, { recursive: true, force: true });
-            console.log('Diretório de autenticação removido devido à falha.');
-        }
-    } catch (error) {
-        console.log('Erro ao remover diretório após falha:', error.message);
-    }
-    
-    process.exit(1); // Sai com código de erro
+    setTimeout(() => {
+        process.exit(0);
+    }, 2000);
 });
 
 client.on('disconnected', (reason) => {
     console.log('Cliente desconectado:', reason);
     bot.sendMessage(TELEGRAM_CHAT_ID, `⚠️ WhatsApp desconectado: ${reason}`);
-    process.exit(1); // Sai com código de erro
+    process.exit(1);
 });
 
-// Tratamento de erros não capturados
+// Tratamento de erros
 process.on('uncaughtException', (error) => {
     console.error('Erro não capturado:', error);
     process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('Promise rejeitada não tratada:', reason);
+    console.error('Promise rejeitada:', reason);
     process.exit(1);
 });
 
-// Verifica se já está autenticado após um tempo
+// Verifica se já está autenticado
 setTimeout(() => {
     if (!qrSent) {
-        console.log('Nenhum QR code foi enviado. Verificando se já está autenticado...');
-        // Se não enviou QR code em 10 segundos, verifica se realmente está autenticado
-        // Aguarda mais um pouco para ver se o cliente realmente conecta
         setTimeout(() => {
             if (!qrSent) {
-                console.log('Cliente parece estar autenticado. Saindo com sucesso.');
+                console.log('Cliente autenticado. Saindo com sucesso.');
                 process.exit(0);
             }
-        }, 5000); // Aguarda mais 5 segundos para confirmar
+        }, 8000);
     }
-}, 10000); // Aguarda 10 segundos
+}, 15000);
 
 client.initialize(); 
