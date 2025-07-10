@@ -101,8 +101,7 @@ def get_rotated_urls():
 
 FORCE_RUN_ON_START = os.getenv("FORCE_RUN_ON_START", "false").lower() == "true"
 
-WHATSAPP_HISTORY_FILE = 'promocoes_kabum_whatsapp.json'
-MAX_HISTORY_SIZE_WPP = 200
+
 
 def log(message):
     """Função para logging com timestamp"""
@@ -174,19 +173,7 @@ def save_promo_history(history):
     with open(HISTORY_FILE, 'w') as f:
         json.dump(history, f)
 
-def load_whatsapp_history():
-    try:
-        with open(WHATSAPP_HISTORY_FILE, 'r', encoding='utf-8') as f:
-            nomes = json.load(f)
-        return deque(nomes, maxlen=MAX_HISTORY_SIZE_WPP)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return deque(maxlen=MAX_HISTORY_SIZE_WPP)
 
-def save_whatsapp_history(history: deque):
-    with open(WHATSAPP_HISTORY_FILE, 'w', encoding='utf-8') as f:
-        json.dump(list(history), f)
-
-sent_promotions_whatsapp = load_whatsapp_history()
 
 def clean_price(price_text):
     """Limpa o texto do preço e extrai apenas o valor numérico"""
@@ -366,48 +353,89 @@ def extract_product_details(driver, product_url):
             log(f"Preço original encontrado: {old_price}")
         except Exception as e:
             log(f"Preço original não encontrado pelo seletor direto: {str(e)}")
-            # Fallback: busca todos os spans line-through e pega o maior valor válido
+            # Novo seletor: span dentro de div.flex.justify-between.items-start
             try:
-                old_price_elems = driver.find_elements(By.CSS_SELECTOR, "span.text-black-600.text-xs.font-normal.line-through")
-                valores = []
-                for elem in old_price_elems:
-                    text = elem.text.strip()
-                    valor = clean_price(text)
-                    if valor:
-                        valores.append(valor)
-                if valores:
-                    old_price = max(valores)
-                    log(f"Preço original encontrado (fallback): {old_price}")
+                flex_divs = driver.find_elements(By.CSS_SELECTOR, "div.flex.justify-between.items-start")
+                valores_flex = []
+                for div in flex_divs:
+                    spans = div.find_elements(By.CSS_SELECTOR, "span.text-black-600.text-xs.font-normal.line-through")
+                    for span in spans:
+                        text = span.text.strip()
+                        valor = clean_price(text)
+                        if valor:
+                            valores_flex.append(valor)
+                if valores_flex:
+                    old_price = max(valores_flex)
+                    log(f"Preço original encontrado (flex div): {old_price}")
                 else:
-                    # Fallback ainda mais amplo: qualquer span com 'line-through'
+                    # Fallback: busca todos os spans line-through e pega o maior valor válido
                     try:
-                        generic_line_throughs = driver.find_elements(By.CSS_SELECTOR, "span.line-through")
-                        valores_genericos = []
-                        for elem in generic_line_throughs:
+                        old_price_elems = driver.find_elements(By.CSS_SELECTOR, "span.text-black-600.text-xs.font-normal.line-through")
+                        valores = []
+                        for elem in old_price_elems:
                             text = elem.text.strip()
                             valor = clean_price(text)
                             if valor:
-                                valores_genericos.append(valor)
-                        if valores_genericos:
-                            old_price = max(valores_genericos)
-                            log(f"Preço original encontrado (fallback genérico): {old_price}")
+                                valores.append(valor)
+                        if valores:
+                            old_price = max(valores)
+                            log(f"Preço original encontrado (fallback): {old_price}")
                         else:
-                            # Novo fallback: busca dentro de div com flex justify-between
+                            # Fallback ainda mais amplo: qualquer span com 'line-through'
                             try:
-                                flex_container = driver.find_element(By.CSS_SELECTOR, "div.flex.justify-between.items-start")
-                                line_through_span = flex_container.find_element(By.CSS_SELECTOR, "span.text-black-600.text-xs.font-normal.line-through")
-                                old_price_text = line_through_span.text.strip()
-                                old_price = clean_price(old_price_text)
-                                log(f"Preço original encontrado (flex container): {old_price}")
-                            except Exception as e4:
-                                log(f"Preço original não encontrado nem no flex container: {str(e4)}")
+                                generic_line_throughs = driver.find_elements(By.CSS_SELECTOR, "span.line-through")
+                                valores_genericos = []
+                                for elem in generic_line_throughs:
+                                    text = elem.text.strip()
+                                    valor = clean_price(text)
+                                    if valor:
+                                        valores_genericos.append(valor)
+                                if valores_genericos:
+                                    old_price = max(valores_genericos)
+                                    log(f"Preço original encontrado (fallback genérico): {old_price}")
+                                else:
+                                    old_price = None
+                            except Exception as e3:
+                                log(f"Preço original não encontrado nem no fallback genérico: {str(e3)}")
                                 old_price = None
-                    except Exception as e3:
-                        log(f"Preço original não encontrado nem no fallback genérico: {str(e3)}")
+                    except Exception as e2:
+                        log(f"Preço original não encontrado nem no fallback: {str(e2)}")
                         old_price = None
-            except Exception as e2:
-                log(f"Preço original não encontrado nem no fallback: {str(e2)}")
-                old_price = None
+            except Exception as e_flex:
+                log(f"Preço original não encontrado no flex div: {str(e_flex)}")
+                # Fallback: busca todos os spans line-through e pega o maior valor válido
+                try:
+                    old_price_elems = driver.find_elements(By.CSS_SELECTOR, "span.text-black-600.text-xs.font-normal.line-through")
+                    valores = []
+                    for elem in old_price_elems:
+                        text = elem.text.strip()
+                        valor = clean_price(text)
+                        if valor:
+                            valores.append(valor)
+                    if valores:
+                        old_price = max(valores)
+                        log(f"Preço original encontrado (fallback): {old_price}")
+                    else:
+                        # Fallback ainda mais amplo: qualquer span com 'line-through'
+                        try:
+                            generic_line_throughs = driver.find_elements(By.CSS_SELECTOR, "span.line-through")
+                            valores_genericos = []
+                            for elem in generic_line_throughs:
+                                text = elem.text.strip()
+                                valor = clean_price(text)
+                                if valor:
+                                    valores_genericos.append(valor)
+                            if valores_genericos:
+                                old_price = max(valores_genericos)
+                                log(f"Preço original encontrado (fallback genérico): {old_price}")
+                            else:
+                                old_price = None
+                        except Exception as e3:
+                            log(f"Preço original não encontrado nem no fallback genérico: {str(e3)}")
+                            old_price = None
+                except Exception as e2:
+                    log(f"Preço original não encontrado nem no fallback: {str(e2)}")
+                    old_price = None
 
         # 2. Preço no cartão (primeiro <b> dentro de <span class='block my-12'>)
         try:
@@ -901,19 +929,7 @@ def check_promotions():
                 # Pausa entre envios
                 time.sleep(random.uniform(3, 7))
 
-                # Envia para WhatsApp
-                whatsapp_success = send_whatsapp_message_kabum(message, product.get('image_url'))
-                if whatsapp_success:
-                    if not TEST_MODE:
-                        sent_promotions_whatsapp.append(product['name'])
-                        if len(sent_promotions_whatsapp) > MAX_HISTORY_SIZE_WPP:
-                            sent_promotions_whatsapp = deque(list(sent_promotions_whatsapp)[-MAX_HISTORY_SIZE_WPP:], maxlen=MAX_HISTORY_SIZE_WPP)
-                        save_whatsapp_history(sent_promotions_whatsapp)
-                        log("Produto salvo no histórico do WhatsApp.")
-                    else:
-                        log("⚠️ Modo teste ativado - Produto não será salvo no histórico do WhatsApp")
-                else:
-                    log("Falha ao enviar para WhatsApp - Produto não será salvo no histórico do WhatsApp")
+
             else:
                 log(f"Produto já enviado: {product['name'][:50]}...")
         
@@ -950,119 +966,7 @@ def schedule_scraper():
         schedule.run_pending()
         time.sleep(10)
 
-def send_whatsapp_message_kabum(message, image_url=None):
-    group = "Grupo Teste" if TEST_MODE else "Central De Descontos"
-    # Primeiro, verifica autenticação do WhatsApp
-    try:
-        auth_proc = subprocess.run(['node', 'Wpp/wpp_auth.js'], check=False)
-        if auth_proc.returncode == 0:
-            # Logado, pode enviar
-            cmd = ['node', 'Wpp/wpp_envio.js', group, message]
-            if image_url:
-                cmd.append(image_url)
-            try:
-                subprocess.run(cmd, check=True)
-                return True
-            except subprocess.CalledProcessError as e:
-                log(f"Erro ao enviar mensagem para WhatsApp: {e}")
-                return False
-            except Exception as e:
-                log(f"Erro inesperado ao enviar mensagem para WhatsApp: {e}")
-                return False
-        elif auth_proc.returncode == 1:
-            # Não logado, QR code foi gerado, avisa no Telegram
-            aviso = "⚠️ O WhatsApp não está autenticado! Escaneie o QR code enviado para o Telegram para reautenticar."
-            send_telegram_message(
-                message=aviso,
-                image_url=None,
-                bot_token=TELEGRAM_BOT_TOKEN,
-                chat_id=TELEGRAM_GROUP_ID
-            )
-            log("WhatsApp não autenticado. QR code enviado para o Telegram.")
-            return False
-        else:
-            log(f"wpp_auth.js retornou código inesperado: {auth_proc.returncode}")
-            return False
-    except Exception as e:
-        log(f"Erro ao rodar wpp_auth.js: {e}")
-        return False
 
-def clear_whatsapp_auth():
-    """Força a limpeza do diretório de autenticação do WhatsApp"""
-    try:
-        log("Forçando limpeza do diretório de autenticação do WhatsApp...")
-        import shutil
-        import os
-        
-        # Remove o diretório .wwebjs_auth se existir
-        auth_dir = os.path.join(os.getcwd(), '.wwebjs_auth')
-        if os.path.exists(auth_dir):
-            shutil.rmtree(auth_dir)
-            log("Diretório de autenticação removido.")
-        else:
-            log("Diretório de autenticação não encontrado.")
-        
-        # Também remove outros arquivos que podem estar relacionados
-        possible_files = ['.wwebjs_auth', 'session', 'session.data', 'session.data.json']
-        for file in possible_files:
-            file_path = os.path.join(os.getcwd(), file)
-            if os.path.exists(file_path):
-                if os.path.isdir(file_path):
-                    shutil.rmtree(file_path)
-                else:
-                    os.remove(file_path)
-                log(f"Arquivo/diretório removido: {file}")
-        
-        log("Limpeza do diretório de autenticação concluída.")
-        return True
-    except Exception as e:
-        log(f"Erro ao limpar diretório de autenticação: {e}")
-        return False
-
-def wait_for_whatsapp_auth(max_wait=120, interval=5):
-    """Tenta autenticar o WhatsApp, esperando até max_wait segundos."""
-    start = time.time()
-    avisado = False
-    tentativas = 0
-    max_tentativas = 3
-    
-    while True:
-        auth_proc = subprocess.run(['node', 'Wpp/wpp_auth.js'], check=False)
-        if auth_proc.returncode == 0:
-            log("WhatsApp autenticado! Prosseguindo com o scraper.")
-            return True
-        elif auth_proc.returncode == 1:
-            tentativas += 1
-            if not avisado:
-                aviso = "⚠️ O WhatsApp não está autenticado! Escaneie o QR code enviado para o Telegram para reautenticar."
-                send_telegram_message(
-                    message=aviso,
-                    image_url=None,
-                    bot_token=TELEGRAM_BOT_TOKEN,
-                    chat_id=TELEGRAM_GROUP_ID
-                )
-                avisado = True
-            
-            log(f"Aguardando autenticação do WhatsApp... (tentativa {tentativas}/{max_tentativas})")
-            
-            # Se já tentou várias vezes, força limpeza do diretório
-            if tentativas >= max_tentativas:
-                log("Múltiplas tentativas falharam. Forçando limpeza do diretório de autenticação...")
-                if clear_whatsapp_auth():
-                    tentativas = 0  # Reset contador
-                    avisado = False  # Reset aviso
-                    log("Limpeza concluída. Tentando autenticação novamente...")
-                else:
-                    log("Falha na limpeza do diretório. Encerrando o script.")
-                    sys.exit(1)
-            
-            if time.time() - start > max_wait:
-                log("Tempo limite de autenticação do WhatsApp excedido. Encerrando o script.")
-                sys.exit(1)
-            time.sleep(interval)
-        else:
-            log(f"wpp_auth.js retornou código inesperado: {auth_proc.returncode}. Encerrando o script.")
-            sys.exit(1)
 
 if __name__ == "__main__":
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_GROUP_ID:
@@ -1070,8 +974,4 @@ if __name__ == "__main__":
         sys.exit(1)
     
     log("Iniciando scraper da Kabum...")
-    # --- Verificação de autenticação do WhatsApp no início ---
-    wait_for_whatsapp_auth()
-    # --- Fim da verificação de autenticação do WhatsApp ---
-
     schedule_scraper()

@@ -145,22 +145,7 @@ def save_promo_history(history: deque):
 # Variável global para armazenar promoções já enviadas
 sent_promotions = load_promo_history()
 
-# Função para registrar promoções enviadas para WhatsApp
-WHATSAPP_HISTORY_FILE = 'promocoes_ml_whatsapp.json'
 
-def load_whatsapp_history():
-    try:
-        with open(WHATSAPP_HISTORY_FILE, 'r', encoding='utf-8') as f:
-            nomes = json.load(f)
-        return deque(nomes, maxlen=MAX_HISTORY_SIZE)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return deque(maxlen=MAX_HISTORY_SIZE)
-
-def save_whatsapp_history(history: deque):
-    with open(WHATSAPP_HISTORY_FILE, 'w', encoding='utf-8') as f:
-        json.dump(list(history), f)
-
-sent_promotions_whatsapp = load_whatsapp_history()
 
 def log(message):
     """Função para logging com timestamp"""
@@ -605,8 +590,7 @@ def check_promotions():
         # Coleta nomes já enviados
         sent_names = set(sent_promotions)  # já estão normalizados no arquivo
 
-        # COMENTADO: WhatsApp não está mais funcionando
-        # run_whatsapp_auth()
+
         
         for url in product_urls:
             log(f"Processando promoção: {url}")
@@ -642,17 +626,7 @@ def check_promotions():
                 else:
                     log("Falha ao enviar para Telegram - Produto não será salvo")
 
-                # Envia para WhatsApp
-                whatsapp_success = send_whatsapp_message(message, image_url)
-                if whatsapp_success:
-                    if not TEST_MODE:
-                        sent_promotions_whatsapp.append(product_title)
-                        save_whatsapp_history(sent_promotions_whatsapp)
-                        log("Produto salvo no histórico do WhatsApp.")
-                    else:
-                        log("⚠️ Modo teste ativado - Produto não será salvo no histórico do WhatsApp")
-                else:
-                    log("Falha ao enviar para WhatsApp - Produto não será salvo no histórico do WhatsApp")
+
 
             except Exception as e:
                 log(f"Erro no processamento da promoção: {str(e)}")
@@ -664,76 +638,7 @@ def check_promotions():
             log("Fechando o navegador...")
             driver.quit()
 
-def clear_whatsapp_auth():
-    """Força a limpeza do diretório de autenticação do WhatsApp"""
-    try:
-        log("Forçando limpeza do diretório de autenticação do WhatsApp...")
-        import shutil
-        import os
-        
-        # Remove o diretório .wwebjs_auth se existir
-        auth_dir = os.path.join(os.getcwd(), '.wwebjs_auth')
-        if os.path.exists(auth_dir):
-            shutil.rmtree(auth_dir)
-            log("Diretório de autenticação removido.")
-        else:
-            log("Diretório de autenticação não encontrado.")
-        
-        # Também remove outros arquivos que podem estar relacionados
-        possible_files = ['.wwebjs_auth', 'session', 'session.data', 'session.data.json']
-        for file in possible_files:
-            file_path = os.path.join(os.getcwd(), file)
-            if os.path.exists(file_path):
-                if os.path.isdir(file_path):
-                    shutil.rmtree(file_path)
-                else:
-                    os.remove(file_path)
-                log(f"Arquivo/diretório removido: {file}")
-        
-        log("Limpeza do diretório de autenticação concluída.")
-        return True
-    except Exception as e:
-        log(f"Erro ao limpar diretório de autenticação: {e}")
-        return False
 
-def send_whatsapp_message(message, image_url=None):
-    group = "Grupo Teste" if TEST_MODE else "Central De Descontos"
-    # Primeiro, verifica autenticação do WhatsApp
-    try:
-        auth_proc = subprocess.run(['node', 'Wpp/wpp_auth.js'], check=False)
-        if auth_proc.returncode == 0:
-            # Logado, pode enviar
-            cmd = ['node', 'Wpp/wpp_envio.js', group, message]
-            if image_url:
-                cmd.append(image_url)
-            # Adiciona flags de sandbox para evitar erro no Linux
-            cmd += ['--no-sandbox', '--disable-setuid-sandbox']
-            try:
-                subprocess.run(cmd, check=True)
-                return True
-            except subprocess.CalledProcessError as e:
-                log(f"Erro ao enviar mensagem para WhatsApp: {e}")
-                return False
-            except Exception as e:
-                log(f"Erro inesperado ao enviar mensagem para WhatsApp: {e}")
-                return False
-        elif auth_proc.returncode == 1:
-            # Não logado, QR code foi gerado, avisa no Telegram
-            aviso = "⚠️ O WhatsApp não está autenticado! Escaneie o QR code enviado para o Telegram para reautenticar."
-            send_telegram_message(
-                message=aviso,
-                image_url=None,
-                bot_token=TELEGRAM_BOT_TOKEN,
-                chat_id=TELEGRAM_GROUP_ID
-            )
-            log("WhatsApp não autenticado. QR code enviado para o Telegram.")
-            return False
-        else:
-            log(f"wpp_auth.js retornou código inesperado: {auth_proc.returncode}")
-            return False
-    except Exception as e:
-        log(f"Erro ao rodar wpp_auth.js: {e}")
-        return False
 
 def schedule_scraper():
     """Configura e inicia o agendamento do scraper."""
@@ -787,60 +692,7 @@ def schedule_scraper():
             print(f"Erro no agendamento: {e}")
             time.sleep(60)  # Espera 1 minuto antes de tentar novamente
 
-def wait_for_whatsapp_auth(max_wait=120, interval=5):
-    """Tenta autenticar o WhatsApp, esperando até max_wait segundos."""
-    start = time.time()
-    avisado = False
-    tentativas = 0
-    max_tentativas = 3
-    
-    while True:
-        auth_proc = subprocess.run(['node', 'Wpp/wpp_auth.js'], check=False)
-        if auth_proc.returncode == 0:
-            log("WhatsApp autenticado! Prosseguindo com o scraper.")
-            if avisado:
-                send_telegram_message(
-                    message='✅ WhatsApp autenticado com sucesso!',
-                    image_url=None,
-                    bot_token=TELEGRAM_BOT_TOKEN,
-                    chat_id=TELEGRAM_GROUP_ID
-                )
-            return True
-        elif auth_proc.returncode == 1:
-            tentativas += 1
-            if not avisado:
-                aviso = "⚠️ O WhatsApp não está autenticado! Escaneie o QR code enviado para o Telegram para reautenticar."
-                send_telegram_message(
-                    message=aviso,
-                    image_url=None,
-                    bot_token=TELEGRAM_BOT_TOKEN,
-                    chat_id=TELEGRAM_GROUP_ID
-                )
-                avisado = True
-            
-            log(f"Aguardando autenticação do WhatsApp... (tentativa {tentativas}/{max_tentativas})")
-            
-            # Se já tentou várias vezes, força limpeza do diretório
-            if tentativas >= max_tentativas:
-                log("Múltiplas tentativas falharam. Forçando limpeza do diretório de autenticação...")
-                if clear_whatsapp_auth():
-                    tentativas = 0  # Reset contador
-                    avisado = False  # Reset aviso
-                    log("Limpeza concluída. Tentando autenticação novamente...")
-                else:
-                    log("Falha na limpeza do diretório. Encerrando o script.")
-                    sys.exit(1)
-            
-            if time.time() - start > max_wait:
-                log("Tempo limite de autenticação do WhatsApp excedido. Encerrando o script.")
-                sys.exit(1)
-            time.sleep(interval)
-        else:
-            log(f"wpp_auth.js retornou código inesperado: {auth_proc.returncode}. Encerrando o script.")
-            sys.exit(1)
 
-# Chame no início do script:
-wait_for_whatsapp_auth()
 
 if __name__ == "__main__":
     schedule_scraper()
