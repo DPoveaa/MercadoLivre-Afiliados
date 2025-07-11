@@ -1,21 +1,16 @@
 # Ambientes e tokens
 .env
-
 # Node.js
 node_modules/
-
 # Python
 __pycache__/
 *.pyc
-
 # VS Code
 .vscode/
-
 # Logs e temporários
 *.log
 *.tmp
 *.bak
-
 # Cache Puppeteer, Selenium, etc.
 .wwwebjs_cache/
 auth_data/
@@ -24,3 +19,9 @@ Whatsapp/.wwebjs_cache/2.3000.1022507914.html
 used_urls*
 promocoes*
 *.wwebjs_auth
+
+# managed
+**.data.json
+**.node-persist**
+**_IGNORE_**
+# end managed

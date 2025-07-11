@@ -67,8 +67,7 @@ nano .env
 
 Adicione as seguintes variáveis ao .env:
 ```env
-# WhatsApp WAHA
-WAHA_API_URL=http://localhost:3000
+# WhatsApp Open-WA
 WHATSAPP_PHONE_NUMBER=5511999999999
 
 # WhatsApp Grupos e Canais
@@ -84,30 +83,30 @@ TELEGRAM_CHAT_ID=1689537480
 # Outras configurações existentes...
 ```
 
-## 3. Subir o WAHA
+## 3. Configurar o Open-WA
 
-### Usando Docker Compose (recomendado):
+### Instalar dependências:
 ```bash
-docker-compose up -d
+npm install @open-wa/wa-automate
 ```
 
-### OU usando Docker diretamente:
+### Iniciar o Open-WA:
 ```bash
-docker run -d -p 3000:3000 --name waha --restart=always -v waha-data:/app/data devlikeapro/waha:latest
+cd WhatsApp
+node start_openwa.js
 ```
 
 ### Verificar se está rodando:
 ```bash
-docker ps
-curl http://localhost:3000/api/status
+ps aux | grep node
 ```
 
 ## 4. Configurar WhatsApp
 
-### Acessar a interface do WAHA:
-- Abra no navegador: `http://<IP-DO-SERVIDOR>:3000`
-- Escaneie o QR Code com o WhatsApp do número configurado
-- Aguarde a conexão ser estabelecida
+### Autenticar o Open-WA:
+- Execute `node start_openwa.js` no terminal
+- Escaneie o QR Code que aparecer no terminal com o WhatsApp do número configurado
+- Aguarde a conexão ser estabelecida (aparecerá "✅ Conectado!")
 
 ### Adicionar aos grupos e canais:
 1. **Grupo de Teste**: Adicione o número do WhatsApp ao grupo "Grupo Teste"
@@ -123,7 +122,7 @@ source venv/bin/activate
 
 # Testar envio
 python3 -c "
-from WhatsApp.wa_enviar import send_whatsapp_to_multiple_targets
+from WhatsApp.wa_enviar_openwa import send_whatsapp_to_multiple_targets
 result = send_whatsapp_to_multiple_targets('Teste de integração WhatsApp!')
 print('Resultado:', result)
 "

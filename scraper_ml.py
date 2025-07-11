@@ -10,7 +10,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from difflib import SequenceMatcher
 from collections import deque
 from Telegram.tl_enviar import send_telegram_message
-from WhatsApp.wa_enviar import send_whatsapp_to_multiple_targets
+from WhatsApp.wa_enviar_openwa import send_whatsapp_to_multiple_targets
 import json
 import unicodedata
 from collections import deque

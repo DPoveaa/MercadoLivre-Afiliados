@@ -22,7 +22,7 @@ import schedule
 import subprocess
 from collections import deque
 import sys
-from WhatsApp.wa_enviar import send_whatsapp_to_multiple_targets
+from WhatsApp.wa_enviar_openwa import send_whatsapp_to_multiple_targets
 from WhatsApp.monitor import wait_for_whatsapp_auth
 
 load_dotenv()
