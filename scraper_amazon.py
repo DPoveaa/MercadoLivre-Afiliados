@@ -111,6 +111,8 @@ AMAZON_CATEGORIES = [
 USED_URLS_FILE = 'used_urls_amazon.json'
 
 def load_used_urls():
+    if TEST_MODE:
+        return set()
     try:
         with open(USED_URLS_FILE, 'r') as f:
             return set(json.load(f))
@@ -118,6 +120,8 @@ def load_used_urls():
         return set()
 
 def save_used_urls(used_urls):
+    if TEST_MODE:
+        return
     with open(USED_URLS_FILE, 'w') as f:
         json.dump(list(used_urls), f)
 
@@ -160,6 +164,8 @@ def is_similar(a: str, b: str, thresh: float = SIMILARITY_THRESHOLD) -> bool:
     return score >= thresh
 
 def load_sent_products():
+    if TEST_MODE:
+        return []
     """Load the list of previously sent products from JSON file."""
     try:
         if os.path.exists('promocoes_amazon.json'):
@@ -177,6 +183,8 @@ def load_sent_products():
         return []
 
 def save_sent_products(products):
+    if TEST_MODE:
+        return
     """Save the list of sent products to JSON file."""
     try:
         # Se atingiu o limite, remove os mais antigos
@@ -880,6 +888,7 @@ def run_scraper():
         sent_products = load_sent_products()
         novos_enviados = []
         produtos_nao_enviados = []
+        erros = []
 
         print(f"📊 Processando {len(products_data)} produtos para envio...")
         
@@ -907,18 +916,16 @@ def run_scraper():
                         sent_products.append(nome_produto)
                         novos_enviados.append(nome_produto)
                         print(f"✅ Produto enviado com sucesso: {nome_produto[:50]}...")
-                    
                     # Remove o mais antigo se passar do limite
                     if len(sent_products) > MAX_HISTORY_SIZE:
                         sent_products = sent_products[-MAX_HISTORY_SIZE:]
                 else:
                     produtos_nao_enviados.append(produto['nome'])
+                    erros.append(f"{produto['nome'][:50]}... - Falha ao enviar para Telegram")
                     print(f"❌ Falha ao enviar produto: {produto['nome'][:50]}...")
-                    
-
-
             except Exception as e:
                 produtos_nao_enviados.append(produto['nome'])
+                erros.append(f"{produto.get('nome', 'Sem nome')[:50]}... - Erro: {str(e)}")
                 print(f"❌ Erro ao processar produto {produto.get('nome', 'Sem nome')}: {str(e)}")
             
             sleep(1)  # Delay entre produtos
@@ -941,6 +948,20 @@ def run_scraper():
 
         if TEST_MODE:
             print("⚠️ Modo teste ativado - Produtos não foram realmente salvos")
+
+        # Envia resumo ao final
+        resumo_msg = '\n'.join([f"{nome[:50]}... - ENVIADO" for nome in novos_enviados]) if novos_enviados else "Nenhum produto enviado."
+        erros_msg = '\n'.join(erros) if erros else "Sem erros."
+        final_msg = f"\n*Resumo das promoções Amazon:*\n{resumo_msg}\n\n*Erros:*\n{erros_msg}"
+        try:
+            send_telegram_message(
+                message=final_msg,
+                image_url=None,
+                bot_token=TELEGRAM_BOT_TOKEN,
+                chat_id=TELEGRAM_GROUP_ID
+            )
+        except Exception as e:
+            print(f"Erro ao enviar resumo final: {str(e)}")
 
     except Exception as e:
         print(f"❌ Erro durante a execução do scraper: {e}")

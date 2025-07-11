@@ -89,6 +89,8 @@ FORCE_RUN_ON_START = os.getenv("FORCE_RUN_ON_START", "false").lower() == "true"
 
 def load_used_urls():
     """Carrega a lista de URLs já utilizadas do arquivo"""
+    if TEST_MODE:
+        return set()
     try:
         with open(USED_URLS_FILE, 'r') as f:
             return set(json.load(f))
@@ -97,6 +99,8 @@ def load_used_urls():
 
 def save_used_urls(used_urls):
     """Salva a lista de URLs já utilizadas no arquivo"""
+    if TEST_MODE:
+        return
     with open(USED_URLS_FILE, 'w') as f:
         json.dump(list(used_urls), f)
 
@@ -132,6 +136,8 @@ def is_similar(a: str, b: str, thresh: float = SIMILARITY_THRESHOLD) -> bool:
     
 # Função para carregar o histórico de promoções
 def load_promo_history() -> deque:
+    if TEST_MODE:
+        return deque(maxlen=MAX_HISTORY_SIZE)
     try:
         with open(HISTORY_FILE, 'r') as f:
             nomes = json.load(f)
@@ -141,6 +147,8 @@ def load_promo_history() -> deque:
 
 # Função para salvar o histórico
 def save_promo_history(history: deque):
+    if TEST_MODE:
+        return
     with open(HISTORY_FILE, 'w') as f:
         json.dump(list(history), f)
 
@@ -580,6 +588,8 @@ def get_product_details(driver, url, max_retries=3):
 def check_promotions():
     log("Iniciando verificação de promoções...")
     driver = None
+    resumo = []
+    erros = []
     try:
         driver = init_driver()
         add_cookies(driver)
@@ -592,17 +602,17 @@ def check_promotions():
         # Coleta nomes já enviados
         sent_names = set(sent_promotions)  # já estão normalizados no arquivo
 
-
-        
         for url in product_urls:
             log(f"Processando promoção: {url}")
             try:
                 product_title, message, image_url = get_product_details(driver, url)
                 if not message:
+                    erros.append(f"{url} - Falha ao extrair detalhes")
                     continue
 
                 if any(is_similar(product_title, sent) for sent in sent_names):
                     log(f"Produto muito parecido com um já enviado: {product_title}")
+                    resumo.append(f"{product_title[:50]}... - JÁ ENVIADO")
                     continue
 
                 # Envia para Telegram
@@ -617,6 +627,7 @@ def check_promotions():
                         )
                     except Exception as e:
                         log(f"Erro ao enviar com foto para Telegram: {str(e)}")
+                        telegram_success = False
 
                 # Envia para WhatsApp (grupo e canal)
                 whatsapp_results = send_whatsapp_to_multiple_targets(
@@ -625,6 +636,7 @@ def check_promotions():
                 )
 
                 if telegram_success:
+                    resumo.append(f"{product_title[:50]}... - ENVIADO")
                     if not TEST_MODE:
                         sent_promotions.append(product_title)
                         save_promo_history(sent_promotions)
@@ -632,19 +644,33 @@ def check_promotions():
                     else:
                         log("⚠️ Modo teste ativado - Produto não será salvo no histórico")
                 else:
+                    erros.append(f"{product_title[:50]}... - Falha ao enviar para Telegram")
                     log("Falha ao enviar para Telegram - Produto não será salvo")
 
-
-
             except Exception as e:
+                erros.append(f"{url} - Erro: {str(e)}")
                 log(f"Erro no processamento da promoção: {str(e)}")
 
     except Exception as e:
         log(f"ERRO durante a verificação: {str(e)}")
+        erros.append(f"ERRO GERAL: {str(e)}")
     finally:
         if driver:
             log("Fechando o navegador...")
             driver.quit()
+        # Envia resumo ao final
+        resumo_msg = "\n".join(resumo) if resumo else "Nenhuma promoção processada."
+        erros_msg = "\n".join(erros) if erros else "Sem erros."
+        final_msg = f"\n*Resumo das promoções Mercado Livre:*\n{resumo_msg}\n\n*Erros:*\n{erros_msg}"
+        try:
+            send_telegram_message(
+                message=final_msg,
+                image_url=None,
+                bot_token=TELEGRAM_BOT_TOKEN,
+                chat_id=TELEGRAM_GROUP_ID
+            )
+        except Exception as e:
+            log(f"Erro ao enviar resumo final: {str(e)}")
 
 
 

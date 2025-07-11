@@ -64,6 +64,8 @@ USED_URLS_FILE = 'used_urls_kabum.json'
 
 def load_used_urls():
     """Carrega a lista de URLs já utilizadas do arquivo"""
+    if TEST_MODE:
+        return set()
     try:
         with open(USED_URLS_FILE, 'r') as f:
             return set(json.load(f))
@@ -72,6 +74,8 @@ def load_used_urls():
 
 def save_used_urls(used_urls):
     """Salva a lista de URLs já utilizadas no arquivo"""
+    if TEST_MODE:
+        return
     with open(USED_URLS_FILE, 'w') as f:
         json.dump(list(used_urls), f)
 
@@ -164,6 +168,8 @@ def init_driver():
 
 def load_promo_history():
     """Carrega o histórico de nomes de produtos já enviados"""
+    if TEST_MODE:
+        return []
     try:
         with open(HISTORY_FILE, 'r') as f:
             return json.load(f)
@@ -172,6 +178,8 @@ def load_promo_history():
 
 def save_promo_history(history):
     """Salva o histórico de nomes de produtos"""
+    if TEST_MODE:
+        return
     with open(HISTORY_FILE, 'w') as f:
         json.dump(history, f)
 
@@ -821,6 +829,8 @@ def check_promotions():
     log("Iniciando verificação de promoções da Kabum...")
     
     driver = None
+    resumo = []
+    erros = []
     try:
         driver = init_driver()
         
@@ -862,6 +872,7 @@ def check_promotions():
                         is_duplicate = is_duplicate_product(product['name'], sent_promotions)
                         if is_duplicate:
                             log(f"Produto já enviado: {product['name'][:50]}...")
+                            resumo.append(f"{product['name'][:50]}... - JÁ ENVIADO")
                             product = None  # Marca como None para não processar
                             break
                         else:
@@ -879,6 +890,7 @@ def check_promotions():
             dados_faltando = []
             if not product:
                 log(f"Erro ao extrair detalhes do produto {i+1} após {max_retries} tentativas ou produto já enviado/gift card")
+                erros.append(f"{product_url} - Falha ao extrair detalhes ou já enviado/gift card")
                 continue
             if not product.get('name'):
                 dados_faltando.append('nome')
@@ -890,6 +902,7 @@ def check_promotions():
                 dados_faltando.append('link')
             if dados_faltando:
                 log(f"Produto ignorado por falta de dados obrigatórios: {', '.join(dados_faltando)} - {product.get('name', 'Nome não encontrado')}")
+                erros.append(f"{product.get('name', 'Nome não encontrado')[:50]}... - Faltam dados: {', '.join(dados_faltando)}")
                 continue
             
             # Verifica se já foi enviado (verificação adicional)
@@ -923,15 +936,20 @@ def check_promotions():
                 if success:
                     log("Mensagem enviada com sucesso")
                     # Adiciona ao histórico
-                    sent_promotions.append(product['name'])
-                    
-                    # Mantém apenas os últimos MAX_HISTORY_SIZE
-                    if len(sent_promotions) > MAX_HISTORY_SIZE:
-                        sent_promotions = sent_promotions[-MAX_HISTORY_SIZE:]
-                    
-                    save_promo_history(sent_promotions)
+                    resumo.append(f"{product['name'][:50]}... - ENVIADO")
+                    if not TEST_MODE:
+                        sent_promotions.append(product['name'])
+                        
+                        # Mantém apenas os últimos MAX_HISTORY_SIZE
+                        if len(sent_promotions) > MAX_HISTORY_SIZE:
+                            sent_promotions = sent_promotions[-MAX_HISTORY_SIZE:]
+                        
+                        save_promo_history(sent_promotions)
+                    else:
+                        log("⚠️ Modo teste ativado - Produto não será salvo no histórico")
                 else:
                     log("Erro ao enviar mensagem")
+                    erros.append(f"{product['name'][:50]}... - Falha ao enviar para Telegram")
                 
                 # Pausa entre envios
                 time.sleep(random.uniform(3, 7))
@@ -939,11 +957,13 @@ def check_promotions():
 
             else:
                 log(f"Produto já enviado: {product['name'][:50]}...")
+                resumo.append(f"{product['name'][:50]}... - JÁ ENVIADO")
         
         log("Verificação de promoções concluída")
         
     except Exception as e:
         log(f"Erro durante verificação: {str(e)}")
+        erros.append(f"ERRO GERAL: {str(e)}")
     finally:
         if driver:
             try:
@@ -951,6 +971,19 @@ def check_promotions():
                 log("Navegador fechado")
             except:
                 log("Erro ao fechar navegador")
+        # Envia resumo ao final
+        resumo_msg = "\n".join(resumo) if resumo else "Nenhuma promoção processada."
+        erros_msg = "\n".join(erros) if erros else "Sem erros."
+        final_msg = f"\n*Resumo das promoções Kabum:*\n{resumo_msg}\n\n*Erros:*\n{erros_msg}"
+        try:
+            send_telegram_message(
+                message=final_msg,
+                image_url=None,
+                bot_token=TELEGRAM_BOT_TOKEN,
+                chat_id=TELEGRAM_GROUP_ID
+            )
+        except Exception as e:
+            log(f"Erro ao enviar resumo final: {str(e)}")
 
 def schedule_scraper():
     """Agenda a execução do scraper"""
