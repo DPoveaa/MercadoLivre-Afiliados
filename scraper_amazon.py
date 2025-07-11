@@ -904,12 +904,12 @@ def run_scraper():
                 # Tenta enviar o produto
                 enviado_telegram = send_telegram_message([produto], driver, sent_products)
                 
-                # Envia para WhatsApp (grupo e canal)
-                if produto.get('mensagem_formatada'):
-                    whatsapp_results = send_whatsapp_to_multiple_targets(
-                        message=produto['mensagem_formatada'],
-                        image_url=produto.get('imagem_url')
-                    )
+                # Envia para WhatsApp (grupo teste se TEST_MODE)
+                whatsapp_results = send_whatsapp_to_multiple_targets(
+                    message=produto.get('mensagem_formatada'),
+                    image_url=produto.get('imagem_url')
+                )
+                print(f"Resultado envio WhatsApp: {whatsapp_results}")
                 
                 if enviado_telegram:
                     for nome_produto in enviado_telegram:

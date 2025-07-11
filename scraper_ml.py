@@ -629,11 +629,12 @@ def check_promotions():
                         log(f"Erro ao enviar com foto para Telegram: {str(e)}")
                         telegram_success = False
 
-                # Envia para WhatsApp (grupo e canal)
+                # Envia para WhatsApp (grupo teste se TEST_MODE)
                 whatsapp_results = send_whatsapp_to_multiple_targets(
                     message=message,
                     image_url=image_url
                 )
+                log(f"Resultado envio WhatsApp: {whatsapp_results}")
 
                 if telegram_success:
                     resumo.append(f"{product_title[:50]}... - ENVIADO")

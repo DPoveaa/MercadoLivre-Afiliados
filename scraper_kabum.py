@@ -927,11 +927,12 @@ def check_promotions():
                     bot_token=TELEGRAM_BOT_TOKEN,
                     chat_id=TELEGRAM_GROUP_ID
                 )
-                # Envia para WhatsApp (grupo e canal)
+                # Envia para WhatsApp (grupo teste se TEST_MODE)
                 whatsapp_results = send_whatsapp_to_multiple_targets(
                     message=message,
                     image_url=product.get('image_url')
                 )
+                log(f"Resultado envio WhatsApp: {whatsapp_results}")
                 
                 if success:
                     log("Mensagem enviada com sucesso")
