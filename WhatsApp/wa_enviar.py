@@ -11,6 +11,7 @@ class WhatsAppAPI:
     def __init__(self, api_url=None, api_key=None):
         self.api_url = api_url or os.getenv("WAHA_API_URL")
         self.api_key = api_key or os.getenv("WAHA_API_KEY")
+        self.session_name = os.getenv("WAHA_SESSION_NAME", "default")
         if not self.api_url:
             log("Erro: URL da API WAHA não configurada")
             return
@@ -25,10 +26,11 @@ class WhatsAppAPI:
     def send_text(self, chat_id, message):
         try:
             url = f"{self.api_url}/api/sendText"
-            payload = {"chatId": chat_id, "text": message}
+            payload = {"chatId": chat_id, "text": message, "session": self.session_name}
             headers = {"Content-Type": "application/json"}
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
+            log(f"Enviando texto para {chat_id} na sessão '{self.session_name}'")
             resp = requests.post(url, json=payload, headers=headers)
             if resp.status_code == 200:
                 log(f"Mensagem enviada para {chat_id}")
@@ -46,11 +48,12 @@ class WhatsAppAPI:
                 "chatId": chat_id,
                 "url": media_url,
                 "caption": message,
-                "session": "default"
+                "session": self.session_name
             }
             headers = {"Content-Type": "application/json"}
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
+            log(f"Enviando imagem para {chat_id} na sessão '{self.session_name}'")
             resp = requests.post(url, json=payload, headers=headers)
             if resp.status_code == 200:
                 log(f"Mídia enviada para {chat_id}")
@@ -58,12 +61,12 @@ class WhatsAppAPI:
             else:
                 log(f"Erro ao enviar mídia: {resp.status_code} - {resp.text}")
                 # Fallback: tenta enviar só o texto
-                log(f"Tentando fallback: enviando só o texto para {chat_id}")
+                log(f"Tentando fallback: enviando só o texto para {chat_id} na sessão '{self.session_name}'")
                 return self.send_text(chat_id, message)
         except Exception as e:
             log(f"Erro ao enviar mídia: {str(e)}")
             # Fallback: tenta enviar só o texto
-            log(f"Tentando fallback: enviando só o texto para {chat_id}")
+            log(f"Tentando fallback: enviando só o texto para {chat_id} na sessão '{self.session_name}'")
             return self.send_text(chat_id, message)
 
 def send_whatsapp_to_multiple_targets(message, image_url=None):
