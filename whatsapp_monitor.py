@@ -21,7 +21,7 @@ def check_whatsapp_connection():
     whatsapp = WhatsAppAPI()
     
     # Verifica se consegue conectar
-    if not whatsapp.check_connection():
+    if not whatsapp.healthcheck():
         print("❌ Problema de conexão detectado!")
         
         # Notifica no Telegram
