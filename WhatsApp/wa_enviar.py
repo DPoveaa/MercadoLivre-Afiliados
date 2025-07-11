@@ -41,8 +41,13 @@ class WhatsAppAPI:
             return False
     def send_media(self, chat_id, message, media_url):
         try:
-            url = f"{self.api_url}/api/sendMedia"
-            payload = {"chatId": chat_id, "media": media_url, "caption": message}
+            url = f"{self.api_url}/api/sendImage"
+            payload = {
+                "chatId": chat_id,
+                "url": media_url,
+                "caption": message,
+                "session": "default"
+            }
             headers = {"Content-Type": "application/json"}
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
