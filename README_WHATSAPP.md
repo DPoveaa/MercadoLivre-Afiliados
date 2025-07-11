@@ -24,7 +24,14 @@ Adicione as seguintes variáveis ao seu arquivo `.env`:
 WHATSAPP_ENABLED=true
 GREEN_API_INSTANCE_ID=seu_instance_id_aqui
 GREEN_API_TOKEN=seu_api_token_aqui
-WHATSAPP_PHONE_NUMBER=5511999999999
+
+# Grupos e Canais do WhatsApp - PRODUÇÃO (IDs separados por vírgula)
+WHATSAPP_GROUPS=120363025123456789@g.us,120363025987654321@g.us
+WHATSAPP_CHANNELS=120363025123456789@c.us,120363025987654321@c.us
+
+# Grupos e Canais do WhatsApp - TESTE (IDs separados por vírgula)
+WHATSAPP_GROUPS_TESTE=120363025123456789@g.us
+WHATSAPP_CHANNELS_TESTE=120363025123456789@c.us
 
 # Admins para notificação de desconexão (IDs do Telegram)
 ADMIN_CHAT_IDS=123456789,987654321
@@ -35,7 +42,15 @@ ADMIN_CHAT_IDS=123456789,987654321
 - `WHATSAPP_ENABLED`: Habilita/desabilita o envio para WhatsApp (true/false)
 - `GREEN_API_INSTANCE_ID`: ID da instância Green-API
 - `GREEN_API_TOKEN`: Token da API Green-API
-- `WHATSAPP_PHONE_NUMBER`: Número do WhatsApp para envio (formato: 5511999999999)
+
+**Destinos de PRODUÇÃO:**
+- `WHATSAPP_GROUPS`: IDs dos grupos do WhatsApp (separados por vírgula, formato: 120363025123456789@g.us)
+- `WHATSAPP_CHANNELS`: IDs dos canais do WhatsApp (separados por vírgula, formato: 120363025123456789@c.us)
+
+**Destinos de TESTE:**
+- `WHATSAPP_GROUPS_TESTE`: IDs dos grupos de teste do WhatsApp
+- `WHATSAPP_CHANNELS_TESTE`: IDs dos canais de teste do WhatsApp
+
 - `ADMIN_CHAT_IDS`: IDs dos admins no Telegram para notificação de desconexão (separados por vírgula)
 
 ## Funcionalidades
@@ -58,19 +73,35 @@ ADMIN_CHAT_IDS=123456789,987654321
 
 ## Como funciona
 
-1. **Verificação de conexão**: No início de cada execução, o sistema verifica se o WhatsApp está conectado
-2. **Notificação de desconexão**: Se desconectado, os admins são notificados automaticamente no Telegram
-3. **Processamento**: Os scrapers processam os produtos normalmente
-4. **Envio inteligente**: 
-   - Se WhatsApp conectado: envia para Telegram E WhatsApp
+1. **Verificação de modo**: O sistema verifica se está em modo TESTE ou PRODUÇÃO
+2. **Seleção de destinos**: 
+   - **Modo TESTE**: Envia para grupos/canais de teste
+   - **Modo PRODUÇÃO**: Envia para grupos/canais de produção
+3. **Verificação de conexão**: No início de cada execução, o sistema verifica se o WhatsApp está conectado
+4. **Notificação de desconexão**: Se desconectado, os admins são notificados automaticamente no Telegram
+5. **Processamento**: Os scrapers processam os produtos normalmente
+6. **Envio inteligente**: 
+   - Se WhatsApp conectado: envia para Telegram E múltiplos grupos/canais do WhatsApp
    - Se WhatsApp desconectado: envia apenas para Telegram
-5. A mensagem inclui:
+7. A mensagem inclui:
    - Título do produto
    - Preços (original e com desconto)
    - Avaliações (se disponível)
    - Parcelamento (se disponível)
    - Link de afiliado
    - Imagem do produto
+
+## Como obter IDs de grupos e canais
+
+### Para grupos:
+1. Adicione o bot do WhatsApp aos grupos desejados
+2. Use a API para obter o ID do grupo
+3. Formato: `120363025123456789@g.us`
+
+### Para canais:
+1. Adicione o bot do WhatsApp aos canais desejados
+2. Use a API para obter o ID do canal
+3. Formato: `120363025123456789@c.us`
 
 ## Procedimento em caso de desconexão
 

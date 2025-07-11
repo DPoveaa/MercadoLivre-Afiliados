@@ -41,7 +41,6 @@ TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID_TESTE") if TEST_MODE else os.ge
 WHATSAPP_ENABLED = os.getenv("WHATSAPP_ENABLED", "false").lower() == "true"
 GREEN_API_INSTANCE_ID = os.getenv("GREEN_API_INSTANCE_ID")
 GREEN_API_TOKEN = os.getenv("GREEN_API_TOKEN")
-WHATSAPP_PHONE_NUMBER = os.getenv("WHATSAPP_PHONE_NUMBER")
 
 # Admins para notificação de desconexão WhatsApp
 ADMIN_CHAT_IDS = os.getenv("ADMIN_CHAT_IDS", "").split(",") if os.getenv("ADMIN_CHAT_IDS") else []
@@ -833,7 +832,7 @@ def check_promotions():
     if WHATSAPP_ENABLED:
         try:
             from WhatsApp.wa_green_api import GreenAPI
-            whatsapp_api = GreenAPI(GREEN_API_INSTANCE_ID, GREEN_API_TOKEN, WHATSAPP_PHONE_NUMBER)
+            whatsapp_api = GreenAPI(GREEN_API_INSTANCE_ID, GREEN_API_TOKEN)
             whatsapp_connected = whatsapp_api.verify_and_notify_connection(ADMIN_CHAT_IDS)
             
             if whatsapp_connected:
@@ -947,8 +946,7 @@ def check_promotions():
                             message=message,
                             image_url=product.get('image_url'),
                             instance_id=GREEN_API_INSTANCE_ID,
-                            api_token=GREEN_API_TOKEN,
-                            phone_number=WHATSAPP_PHONE_NUMBER
+                            api_token=GREEN_API_TOKEN
                         )
                         if whatsapp_success:
                             log("Mensagem enviada com sucesso para WhatsApp")

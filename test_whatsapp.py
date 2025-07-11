@@ -17,24 +17,45 @@ def test_whatsapp_config():
     whatsapp_enabled = os.getenv("WHATSAPP_ENABLED", "false").lower() == "true"
     instance_id = os.getenv("GREEN_API_INSTANCE_ID")
     api_token = os.getenv("GREEN_API_TOKEN")
-    phone_number = os.getenv("WHATSAPP_PHONE_NUMBER")
+    test_mode = os.getenv("TEST_MODE", "false").lower() == "true"
+    
+    # Verifica destinos baseado no modo
+    if test_mode:
+        whatsapp_groups = os.getenv("WHATSAPP_GROUPS_TESTE", "")
+        whatsapp_channels = os.getenv("WHATSAPP_CHANNELS_TESTE", "")
+        mode_text = "TESTE"
+    else:
+        whatsapp_groups = os.getenv("WHATSAPP_GROUPS", "")
+        whatsapp_channels = os.getenv("WHATSAPP_CHANNELS", "")
+        mode_text = "PRODUÇÃO"
     
     print(f"WHATSAPP_ENABLED: {whatsapp_enabled}")
+    print(f"TEST_MODE: {test_mode} ({mode_text})")
     print(f"GREEN_API_INSTANCE_ID: {'✅ Configurado' if instance_id else '❌ Não configurado'}")
     print(f"GREEN_API_TOKEN: {'✅ Configurado' if api_token else '❌ Não configurado'}")
-    print(f"WHATSAPP_PHONE_NUMBER: {'✅ Configurado' if phone_number else '❌ Não configurado'}")
+    print(f"WHATSAPP_GROUPS ({mode_text}): {'✅ Configurado' if whatsapp_groups else '❌ Não configurado'}")
+    print(f"WHATSAPP_CHANNELS ({mode_text}): {'✅ Configurado' if whatsapp_channels else '❌ Não configurado'}")
     
     if not whatsapp_enabled:
         print("\n⚠️ WhatsApp está desabilitado. Configure WHATSAPP_ENABLED=true no .env")
         return False
     
-    if not all([instance_id, api_token, phone_number]):
-        print("\n❌ Configuração incompleta. Verifique todas as variáveis no .env")
+    if not all([instance_id, api_token]):
+        print("\n❌ Configuração incompleta. Verifique GREEN_API_INSTANCE_ID e GREEN_API_TOKEN no .env")
+        return False
+    
+    if not whatsapp_groups and not whatsapp_channels:
+        print(f"\n⚠️ Nenhum grupo ou canal configurado para modo {mode_text}.")
+        if test_mode:
+            print("Configure WHATSAPP_GROUPS_TESTE ou WHATSAPP_CHANNELS_TESTE no .env")
+        else:
+            print("Configure WHATSAPP_GROUPS ou WHATSAPP_CHANNELS no .env")
+        print("Execute 'python get_whatsapp_ids.py' para obter os IDs")
         return False
     
     # Testa conexão com a API
     print("\n🔗 Testando conexão com a Green-API...")
-    api = GreenAPI(instance_id, api_token, phone_number)
+    api = GreenAPI(instance_id, api_token)
     
     if not api.check_connection():
         print("❌ Falha na conexão com a Green-API")
@@ -62,8 +83,7 @@ Este é um teste da configuração do WhatsApp com Green-API.
     success = send_whatsapp_message(
         message=test_message,
         instance_id=instance_id,
-        api_token=api_token,
-        phone_number=phone_number
+        api_token=api_token
     )
     
     if success:
@@ -82,7 +102,6 @@ def test_with_image():
     
     instance_id = os.getenv("GREEN_API_INSTANCE_ID")
     api_token = os.getenv("GREEN_API_TOKEN")
-    phone_number = os.getenv("WHATSAPP_PHONE_NUMBER")
     
     test_message = """
 🟡 Teste com Imagem
@@ -99,8 +118,7 @@ Este é um teste de envio com imagem usando a Green-API.
         message=test_message,
         image_url=test_image_url,
         instance_id=instance_id,
-        api_token=api_token,
-        phone_number=phone_number
+        api_token=api_token
     )
     
     if success:
