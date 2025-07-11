@@ -18,12 +18,11 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 import undetected_chromedriver as uc
 from webdriver_manager.chrome import ChromeDriverManager
 from Telegram.tl_enviar import send_telegram_message
+from WhatsApp.wa_green_api import send_whatsapp_message
 import platform
 import requests
 import subprocess
 from collections import deque
-from WhatsApp.wa_enviar_openwa import send_whatsapp_to_multiple_targets
-from WhatsApp.monitor import wait_for_whatsapp_auth
 
 sys.stdout.reconfigure(line_buffering=True)
 
@@ -37,6 +36,15 @@ print("Test Mode:", TEST_MODE)
 # Telegram
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID_TESTE") if TEST_MODE else os.getenv("TELEGRAM_GROUP_ID")
+
+# WhatsApp Green-API
+WHATSAPP_ENABLED = os.getenv("WHATSAPP_ENABLED", "false").lower() == "true"
+GREEN_API_INSTANCE_ID = os.getenv("GREEN_API_INSTANCE_ID")
+GREEN_API_TOKEN = os.getenv("GREEN_API_TOKEN")
+WHATSAPP_PHONE_NUMBER = os.getenv("WHATSAPP_PHONE_NUMBER")
+
+# Admins para notificação de desconexão WhatsApp
+ADMIN_CHAT_IDS = os.getenv("ADMIN_CHAT_IDS", "").split(",") if os.getenv("ADMIN_CHAT_IDS") else []
 
 # Configurações gerais
 if TEST_MODE:
@@ -64,8 +72,6 @@ USED_URLS_FILE = 'used_urls_kabum.json'
 
 def load_used_urls():
     """Carrega a lista de URLs já utilizadas do arquivo"""
-    if TEST_MODE:
-        return set()
     try:
         with open(USED_URLS_FILE, 'r') as f:
             return set(json.load(f))
@@ -74,8 +80,6 @@ def load_used_urls():
 
 def save_used_urls(used_urls):
     """Salva a lista de URLs já utilizadas no arquivo"""
-    if TEST_MODE:
-        return
     with open(USED_URLS_FILE, 'w') as f:
         json.dump(list(used_urls), f)
 
@@ -168,8 +172,6 @@ def init_driver():
 
 def load_promo_history():
     """Carrega o histórico de nomes de produtos já enviados"""
-    if TEST_MODE:
-        return []
     try:
         with open(HISTORY_FILE, 'r') as f:
             return json.load(f)
@@ -178,8 +180,6 @@ def load_promo_history():
 
 def save_promo_history(history):
     """Salva o histórico de nomes de produtos"""
-    if TEST_MODE:
-        return
     with open(HISTORY_FILE, 'w') as f:
         json.dump(history, f)
 
@@ -828,9 +828,23 @@ def check_promotions():
     """Função principal que verifica e envia promoções"""
     log("Iniciando verificação de promoções da Kabum...")
     
+    # Verifica conexão do WhatsApp se habilitado
+    whatsapp_connected = True
+    if WHATSAPP_ENABLED:
+        try:
+            from WhatsApp.wa_green_api import GreenAPI
+            whatsapp_api = GreenAPI(GREEN_API_INSTANCE_ID, GREEN_API_TOKEN, WHATSAPP_PHONE_NUMBER)
+            whatsapp_connected = whatsapp_api.verify_and_notify_connection(ADMIN_CHAT_IDS)
+            
+            if whatsapp_connected:
+                log("✅ WhatsApp conectado e funcionando")
+            else:
+                log("⚠️ WhatsApp desconectado - apenas Telegram será usado")
+        except Exception as e:
+            log(f"Erro ao verificar WhatsApp: {str(e)}")
+            whatsapp_connected = False
+    
     driver = None
-    resumo = []
-    erros = []
     try:
         driver = init_driver()
         
@@ -872,7 +886,6 @@ def check_promotions():
                         is_duplicate = is_duplicate_product(product['name'], sent_promotions)
                         if is_duplicate:
                             log(f"Produto já enviado: {product['name'][:50]}...")
-                            resumo.append(f"{product['name'][:50]}... - JÁ ENVIADO")
                             product = None  # Marca como None para não processar
                             break
                         else:
@@ -890,7 +903,6 @@ def check_promotions():
             dados_faltando = []
             if not product:
                 log(f"Erro ao extrair detalhes do produto {i+1} após {max_retries} tentativas ou produto já enviado/gift card")
-                erros.append(f"{product_url} - Falha ao extrair detalhes ou já enviado/gift card")
                 continue
             if not product.get('name'):
                 dados_faltando.append('nome')
@@ -902,7 +914,6 @@ def check_promotions():
                 dados_faltando.append('link')
             if dados_faltando:
                 log(f"Produto ignorado por falta de dados obrigatórios: {', '.join(dados_faltando)} - {product.get('name', 'Nome não encontrado')}")
-                erros.append(f"{product.get('name', 'Nome não encontrado')[:50]}... - Faltam dados: {', '.join(dados_faltando)}")
                 continue
             
             # Verifica se já foi enviado (verificação adicional)
@@ -921,36 +932,48 @@ def check_promotions():
                 message = format_telegram_message(product)
                 
                 # Envia para o Telegram
-                success = send_telegram_message(
+                telegram_success = send_telegram_message(
                     message=message,
                     image_url=product.get('image_url'),
                     bot_token=TELEGRAM_BOT_TOKEN,
                     chat_id=TELEGRAM_GROUP_ID
                 )
-                # Envia para WhatsApp (grupo teste se TEST_MODE)
-                whatsapp_results = send_whatsapp_to_multiple_targets(
-                    message=message,
-                    image_url=product.get('image_url')
-                )
-                log(f"Resultado envio WhatsApp: {whatsapp_results}")
                 
-                if success:
+                # Envia para WhatsApp se habilitado e conectado
+                whatsapp_success = True
+                if WHATSAPP_ENABLED and whatsapp_connected:
+                    try:
+                        whatsapp_success = send_whatsapp_message(
+                            message=message,
+                            image_url=product.get('image_url'),
+                            instance_id=GREEN_API_INSTANCE_ID,
+                            api_token=GREEN_API_TOKEN,
+                            phone_number=WHATSAPP_PHONE_NUMBER
+                        )
+                        if whatsapp_success:
+                            log("Mensagem enviada com sucesso para WhatsApp")
+                        else:
+                            log("Falha ao enviar para WhatsApp")
+                    except Exception as e:
+                        log(f"Erro ao enviar para WhatsApp: {str(e)}")
+                        whatsapp_success = False
+                elif WHATSAPP_ENABLED and not whatsapp_connected:
+                    log("WhatsApp desabilitado - apenas Telegram será usado")
+                    whatsapp_success = False
+                
+                # Salva no histórico se pelo menos um dos envios foi bem-sucedido
+                if telegram_success or (WHATSAPP_ENABLED and whatsapp_success):
                     log("Mensagem enviada com sucesso")
                     # Adiciona ao histórico
-                    resumo.append(f"{product['name'][:50]}... - ENVIADO")
-                    if not TEST_MODE:
-                        sent_promotions.append(product['name'])
-                        
-                        # Mantém apenas os últimos MAX_HISTORY_SIZE
-                        if len(sent_promotions) > MAX_HISTORY_SIZE:
-                            sent_promotions = sent_promotions[-MAX_HISTORY_SIZE:]
-                        
-                        save_promo_history(sent_promotions)
-                    else:
-                        log("⚠️ Modo teste ativado - Produto não será salvo no histórico")
+                    sent_promotions.append(product['name'])
+                    
+                    # Mantém apenas os últimos MAX_HISTORY_SIZE
+                    if len(sent_promotions) > MAX_HISTORY_SIZE:
+                        sent_promotions = sent_promotions[-MAX_HISTORY_SIZE:]
+                    
+                    save_promo_history(sent_promotions)
                 else:
-                    log("Erro ao enviar mensagem")
-                    erros.append(f"{product['name'][:50]}... - Falha ao enviar para Telegram")
+                    log("Erro ao enviar mensagem para Telegram e WhatsApp")
                 
                 # Pausa entre envios
                 time.sleep(random.uniform(3, 7))
@@ -958,13 +981,11 @@ def check_promotions():
 
             else:
                 log(f"Produto já enviado: {product['name'][:50]}...")
-                resumo.append(f"{product['name'][:50]}... - JÁ ENVIADO")
         
         log("Verificação de promoções concluída")
         
     except Exception as e:
         log(f"Erro durante verificação: {str(e)}")
-        erros.append(f"ERRO GERAL: {str(e)}")
     finally:
         if driver:
             try:
@@ -972,19 +993,6 @@ def check_promotions():
                 log("Navegador fechado")
             except:
                 log("Erro ao fechar navegador")
-        # Envia resumo ao final
-        resumo_msg = "\n".join(resumo) if resumo else "Nenhuma promoção processada."
-        erros_msg = "\n".join(erros) if erros else "Sem erros."
-        final_msg = f"\n*Resumo das promoções Kabum:*\n{resumo_msg}\n\n*Erros:*\n{erros_msg}"
-        try:
-            send_telegram_message(
-                message=final_msg,
-                image_url=None,
-                bot_token=TELEGRAM_BOT_TOKEN,
-                chat_id=TELEGRAM_GROUP_ID
-            )
-        except Exception as e:
-            log(f"Erro ao enviar resumo final: {str(e)}")
 
 def schedule_scraper():
     """Agenda a execução do scraper"""
@@ -1015,5 +1023,4 @@ if __name__ == "__main__":
         sys.exit(1)
     
     log("Iniciando scraper da Kabum...")
-    wait_for_whatsapp_auth()
     schedule_scraper()

@@ -22,8 +22,7 @@ import schedule
 import subprocess
 from collections import deque
 import sys
-from WhatsApp.wa_enviar_openwa import send_whatsapp_to_multiple_targets
-from WhatsApp.monitor import wait_for_whatsapp_auth
+from WhatsApp.wa_green_api import send_whatsapp_message
 
 load_dotenv()
 
@@ -35,6 +34,15 @@ print("Test Mode:", TEST_MODE)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID_TESTE") if TEST_MODE else os.getenv("TELEGRAM_GROUP_ID")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID_TESTE") if TEST_MODE else os.getenv("TELEGRAM_CHAT_ID")
+
+# WhatsApp Green-API
+WHATSAPP_ENABLED = os.getenv("WHATSAPP_ENABLED", "false").lower() == "true"
+GREEN_API_INSTANCE_ID = os.getenv("GREEN_API_INSTANCE_ID")
+GREEN_API_TOKEN = os.getenv("GREEN_API_TOKEN")
+WHATSAPP_PHONE_NUMBER = os.getenv("WHATSAPP_PHONE_NUMBER")
+
+# Admins para notificação de desconexão WhatsApp
+ADMIN_CHAT_IDS = os.getenv("ADMIN_CHAT_IDS", "").split(",") if os.getenv("ADMIN_CHAT_IDS") else []
 
 
 
@@ -111,8 +119,6 @@ AMAZON_CATEGORIES = [
 USED_URLS_FILE = 'used_urls_amazon.json'
 
 def load_used_urls():
-    if TEST_MODE:
-        return set()
     try:
         with open(USED_URLS_FILE, 'r') as f:
             return set(json.load(f))
@@ -120,8 +126,6 @@ def load_used_urls():
         return set()
 
 def save_used_urls(used_urls):
-    if TEST_MODE:
-        return
     with open(USED_URLS_FILE, 'w') as f:
         json.dump(list(used_urls), f)
 
@@ -164,8 +168,6 @@ def is_similar(a: str, b: str, thresh: float = SIMILARITY_THRESHOLD) -> bool:
     return score >= thresh
 
 def load_sent_products():
-    if TEST_MODE:
-        return []
     """Load the list of previously sent products from JSON file."""
     try:
         if os.path.exists('promocoes_amazon.json'):
@@ -183,8 +185,6 @@ def load_sent_products():
         return []
 
 def save_sent_products(products):
-    if TEST_MODE:
-        return
     """Save the list of sent products to JSON file."""
     try:
         # Se atingiu o limite, remove os mais antigos
@@ -373,6 +373,22 @@ def send_telegram_message(products, driver, sent_products):
         print("Variáveis de ambiente do Telegram não configuradas!")
         return []
 
+    # Verifica conexão do WhatsApp se habilitado
+    whatsapp_connected = True
+    if WHATSAPP_ENABLED:
+        try:
+            from WhatsApp.wa_green_api import GreenAPI
+            whatsapp_api = GreenAPI(GREEN_API_INSTANCE_ID, GREEN_API_TOKEN, WHATSAPP_PHONE_NUMBER)
+            whatsapp_connected = whatsapp_api.verify_and_notify_connection(ADMIN_CHAT_IDS)
+            
+            if whatsapp_connected:
+                print("✅ WhatsApp conectado e funcionando")
+            else:
+                print("⚠️ WhatsApp desconectado - apenas Telegram será usado")
+        except Exception as e:
+            print(f"Erro ao verificar WhatsApp: {str(e)}")
+            whatsapp_connected = False
+
     new_sent_products = []
 
     for product in products:
@@ -451,8 +467,10 @@ def send_telegram_message(products, driver, sent_products):
                 else:
                     image_url = get_alternative_image(driver, product['nome'], product['link'])
             
-            success = False
+            telegram_success = False
+            whatsapp_success = False
             
+            # Envia para Telegram
             if image_url:
                 try:
                     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
@@ -464,13 +482,13 @@ def send_telegram_message(products, driver, sent_products):
                     }
                     response = requests.post(url, data=payload, timeout=10)
                     response.raise_for_status()
-                    success = True
-                    print(f"✅ Mensagem enviada com imagem: {product['nome'][:50]}...")
+                    telegram_success = True
+                    print(f"✅ Mensagem enviada para Telegram com imagem: {product['nome'][:50]}...")
                 except Exception as e:
-                    print(f"❌ Erro ao enviar com imagem, tentando sem imagem: {e}")
+                    print(f"❌ Erro ao enviar para Telegram com imagem, tentando sem imagem: {e}")
             
             # Se não conseguiu com imagem ou não tem imagem, tenta sem
-            if not success:
+            if not telegram_success:
                 try:
                     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
                     payload = {
@@ -480,12 +498,34 @@ def send_telegram_message(products, driver, sent_products):
                     }
                     response = requests.post(url, data=payload)
                     response.raise_for_status()
-                    success = True
-                    print(f"✅ Mensagem enviada sem imagem: {product['nome'][:50]}...")
+                    telegram_success = True
+                    print(f"✅ Mensagem enviada para Telegram sem imagem: {product['nome'][:50]}...")
                 except Exception as e:
-                    print(f"❌ Falha ao enviar mensagem: {e}")
+                    print(f"❌ Falha ao enviar mensagem para Telegram: {e}")
             
-            if success:
+            # Envia para WhatsApp se habilitado e conectado
+            if WHATSAPP_ENABLED and whatsapp_connected:
+                try:
+                    whatsapp_success = send_whatsapp_message(
+                        message=message,
+                        image_url=image_url,
+                        instance_id=GREEN_API_INSTANCE_ID,
+                        api_token=GREEN_API_TOKEN,
+                        phone_number=WHATSAPP_PHONE_NUMBER
+                    )
+                    if whatsapp_success:
+                        print(f"✅ Mensagem enviada para WhatsApp: {product['nome'][:50]}...")
+                    else:
+                        print(f"❌ Falha ao enviar para WhatsApp: {product['nome'][:50]}...")
+                except Exception as e:
+                    print(f"❌ Erro ao enviar para WhatsApp: {str(e)}")
+                    whatsapp_success = False
+            elif WHATSAPP_ENABLED and not whatsapp_connected:
+                print("WhatsApp desabilitado - apenas Telegram será usado")
+                whatsapp_success = False
+            
+            # Salva no histórico se pelo menos um dos envios foi bem-sucedido
+            if telegram_success or (WHATSAPP_ENABLED and whatsapp_success):
                 new_sent_products.append(product['nome'])
             else:
                 print(f"❌ Falha total ao enviar produto: {product['nome']}")
@@ -888,7 +928,6 @@ def run_scraper():
         sent_products = load_sent_products()
         novos_enviados = []
         produtos_nao_enviados = []
-        erros = []
 
         print(f"📊 Processando {len(products_data)} produtos para envio...")
         
@@ -904,28 +943,23 @@ def run_scraper():
                 # Tenta enviar o produto
                 enviado_telegram = send_telegram_message([produto], driver, sent_products)
                 
-                # Envia para WhatsApp (grupo teste se TEST_MODE)
-                whatsapp_results = send_whatsapp_to_multiple_targets(
-                    message=produto.get('mensagem_formatada'),
-                    image_url=produto.get('imagem_url')
-                )
-                print(f"Resultado envio WhatsApp: {whatsapp_results}")
-                
                 if enviado_telegram:
                     for nome_produto in enviado_telegram:
                         sent_products.append(nome_produto)
                         novos_enviados.append(nome_produto)
                         print(f"✅ Produto enviado com sucesso: {nome_produto[:50]}...")
+                    
                     # Remove o mais antigo se passar do limite
                     if len(sent_products) > MAX_HISTORY_SIZE:
                         sent_products = sent_products[-MAX_HISTORY_SIZE:]
                 else:
                     produtos_nao_enviados.append(produto['nome'])
-                    erros.append(f"{produto['nome'][:50]}... - Falha ao enviar para Telegram")
                     print(f"❌ Falha ao enviar produto: {produto['nome'][:50]}...")
+                    
+
+
             except Exception as e:
                 produtos_nao_enviados.append(produto['nome'])
-                erros.append(f"{produto.get('nome', 'Sem nome')[:50]}... - Erro: {str(e)}")
                 print(f"❌ Erro ao processar produto {produto.get('nome', 'Sem nome')}: {str(e)}")
             
             sleep(1)  # Delay entre produtos
@@ -948,20 +982,6 @@ def run_scraper():
 
         if TEST_MODE:
             print("⚠️ Modo teste ativado - Produtos não foram realmente salvos")
-
-        # Envia resumo ao final
-        resumo_msg = '\n'.join([f"{nome[:50]}... - ENVIADO" for nome in novos_enviados]) if novos_enviados else "Nenhum produto enviado."
-        erros_msg = '\n'.join(erros) if erros else "Sem erros."
-        final_msg = f"\n*Resumo das promoções Amazon:*\n{resumo_msg}\n\n*Erros:*\n{erros_msg}"
-        try:
-            send_telegram_message(
-                message=final_msg,
-                image_url=None,
-                bot_token=TELEGRAM_BOT_TOKEN,
-                chat_id=TELEGRAM_GROUP_ID
-            )
-        except Exception as e:
-            print(f"Erro ao enviar resumo final: {str(e)}")
 
     except Exception as e:
         print(f"❌ Erro durante a execução do scraper: {e}")
@@ -1022,5 +1042,4 @@ def schedule_scraper():
             time.sleep(60)  # Espera 1 minuto antes de tentar novamente
 
 if __name__ == "__main__":
-    wait_for_whatsapp_auth()
     schedule_scraper()  
