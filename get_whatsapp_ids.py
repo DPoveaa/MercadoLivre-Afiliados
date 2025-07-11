@@ -110,7 +110,8 @@ def main():
         # Classifica por tipo
         if "@g.us" in chat_id:
             groups.append({"id": chat_id, "name": chat_name})
-        elif "@c.us" in chat_id and "120363025" in chat_id:
+        elif "@newsletter" in chat_id or ("@c.us" in chat_id and "120363025" in chat_id):
+            # Canais podem ter formato @newsletter ou @c.us
             channels.append({"id": chat_id, "name": chat_name})
         else:
             others.append({"id": chat_id, "name": chat_name})
