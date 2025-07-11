@@ -347,120 +347,39 @@ def extract_product_details(driver, product_url):
             log(f"Produto ignorado (gift card): {product_name}")
             return None
         
-        # Preços - novos seletores baseados no HTML fornecido
+        # Preços
         old_price = None
         discount_price = None
         pix_price = None
         pix_discount_percent = None
         
-        # 1. Preço original (line-through)
+        # 1. Preço original (sempre buscar o maior valor do span.line-through)
         try:
-            # Busca qualquer span com as classes do preço original
-            old_price_elem = driver.find_element(By.CSS_SELECTOR, "span.text-black-600.text-xs.font-normal.line-through")
-            old_price_text = old_price_elem.text.strip()
-            old_price = clean_price(old_price_text)
-            log(f"Preço original encontrado: {old_price}")
-        except Exception as e:
-            log(f"Preço original não encontrado pelo seletor direto: {str(e)}")
-            # Novo seletor: span dentro de div.flex.justify-between.items-start
-            try:
-                flex_divs = driver.find_elements(By.CSS_SELECTOR, "div.flex.justify-between.items-start")
-                valores_flex = []
-                for div in flex_divs:
-                    spans = div.find_elements(By.CSS_SELECTOR, "span.text-black-600.text-xs.font-normal.line-through")
-                    for span in spans:
-                        text = span.text.strip()
-                        valor = clean_price(text)
-                        if valor:
-                            valores_flex.append(valor)
-                if valores_flex:
-                    old_price = max(valores_flex)
-                    log(f"Preço original encontrado (flex div): {old_price}")
-                else:
-                    # Fallback: busca todos os spans line-through e pega o maior valor válido
-                    try:
-                        old_price_elems = driver.find_elements(By.CSS_SELECTOR, "span.text-black-600.text-xs.font-normal.line-through")
-                        valores = []
-                        for elem in old_price_elems:
-                            text = elem.text.strip()
-                            valor = clean_price(text)
-                            if valor:
-                                valores.append(valor)
-                        if valores:
-                            old_price = max(valores)
-                            log(f"Preço original encontrado (fallback): {old_price}")
-                        else:
-                            # Fallback ainda mais amplo: qualquer span com 'line-through'
-                            try:
-                                generic_line_throughs = driver.find_elements(By.CSS_SELECTOR, "span.line-through")
-                                valores_genericos = []
-                                for elem in generic_line_throughs:
-                                    text = elem.text.strip()
-                                    valor = clean_price(text)
-                                    if valor:
-                                        valores_genericos.append(valor)
-                                if valores_genericos:
-                                    old_price = max(valores_genericos)
-                                    log(f"Preço original encontrado (fallback genérico): {old_price}")
-                                else:
-                                    old_price = None
-                            except Exception as e3:
-                                log(f"Preço original não encontrado nem no fallback genérico: {str(e3)}")
-                                old_price = None
-                    except Exception as e2:
-                        log(f"Preço original não encontrado nem no fallback: {str(e2)}")
-                        old_price = None
-            except Exception as e_flex:
-                log(f"Preço original não encontrado no flex div: {str(e_flex)}")
-                # Fallback: busca todos os spans line-through e pega o maior valor válido
-                try:
-                    old_price_elems = driver.find_elements(By.CSS_SELECTOR, "span.text-black-600.text-xs.font-normal.line-through")
-                    valores = []
-                    for elem in old_price_elems:
-                        text = elem.text.strip()
-                        valor = clean_price(text)
-                        if valor:
-                            valores.append(valor)
-                    if valores:
-                        old_price = max(valores)
-                        log(f"Preço original encontrado (fallback): {old_price}")
-                    else:
-                        # Fallback ainda mais amplo: qualquer span com 'line-through'
-                        try:
-                            generic_line_throughs = driver.find_elements(By.CSS_SELECTOR, "span.line-through")
-                            valores_genericos = []
-                            for elem in generic_line_throughs:
-                                text = elem.text.strip()
-                                valor = clean_price(text)
-                                if valor:
-                                    valores_genericos.append(valor)
-                            if valores_genericos:
-                                old_price = max(valores_genericos)
-                                log(f"Preço original encontrado (fallback genérico): {old_price}")
-                            else:
-                                old_price = None
-                        except Exception as e3:
-                            log(f"Preço original não encontrado nem no fallback genérico: {str(e3)}")
-                            old_price = None
-                except Exception as e2:
-                    log(f"Preço original não encontrado nem no fallback: {str(e2)}")
-                    old_price = None
-
-        # 2. Preço no cartão (primeiro <b> dentro de <span class='block my-12'>)
-        try:
-            card_span = driver.find_element(By.CSS_SELECTOR, "span.block.my-12")
-            card_bolds = card_span.find_elements(By.CSS_SELECTOR, "b.text-xs.font-bold.text-black-700")
-            if card_bolds:
-                discount_price_text = card_bolds[0].text.strip()
-                discount_price = clean_price(discount_price_text)
-                log(f"Preço cartão encontrado: {discount_price}")
+            old_price_elems = driver.find_elements(By.CSS_SELECTOR, "span.text-black-600.text-xs.font-normal.line-through")
+            valores = []
+            for elem in old_price_elems:
+                text = elem.text.strip()
+                valor = clean_price(text)
+                if valor:
+                    valores.append(valor)
+            # Fallback: qualquer span com 'line-through'
+            if not valores:
+                generic_line_throughs = driver.find_elements(By.CSS_SELECTOR, "span.line-through")
+                for elem in generic_line_throughs:
+                    text = elem.text.strip()
+                    valor = clean_price(text)
+                    if valor:
+                        valores.append(valor)
+            if valores:
+                old_price = max(valores)
+                log(f"Preço original encontrado: {old_price}")
             else:
-                discount_price = None
+                old_price = None
         except Exception as e:
-            log(f"Preço cartão não encontrado: {str(e)}")
-            discount_price = None
-
-        # 3. Preço PIX (<h4 ...>)
+            log(f"Preço original não encontrado: {str(e)}")
+            old_price = None
+        
+        # 2. Preço PIX (h4.text-4xl.text-secondary-500.font-bold)
         try:
             pix_elems = driver.find_elements(By.CSS_SELECTOR, "h4.text-4xl.text-secondary-500.font-bold")
             pix_valores = []
@@ -471,68 +390,39 @@ def extract_product_details(driver, product_url):
                     pix_valores.append(valor)
             if pix_valores:
                 pix_price = min(pix_valores)
-                log(f"Preço PIX encontrado (menor valor): {pix_price}")
+                log(f"Preço PIX encontrado: {pix_price}")
             else:
                 pix_price = None
         except Exception as e:
             log(f"Preço PIX não encontrado: {str(e)}")
             pix_price = None
         
-        # 4. Informações de parcelamento (novo seletor)
+        # 3. Preço no cartão (opcional, não confundir com parcelamento)
+        # Não buscar no parcelamento, pois é valor dividido
+        discount_price = None
+        # Caso queira buscar preço à vista no cartão, adicionar lógica aqui se houver elemento específico
+        
+        # 4. Informações de parcelamento
         card_info = ""
         try:
-            # Procura pelo container de parcelamento
             installment_container = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.w-full span.block.my-12")))
             installment_text = installment_container.text.strip()
-            
             if installment_text:
                 # Limpa e formata o texto de parcelamento
                 lines = installment_text.split('\n')
                 formatted_lines = []
                 for line in lines:
                     line = line.strip()
-                    if line and ('x' in line or 'cartão' in line.lower() or 'juros' in line.lower() or 'sem juros' in line.lower()):
+                    if line:
                         formatted_lines.append(line)
-                
                 if formatted_lines:
                     card_info = "\n- ".join(formatted_lines)
                     if not card_info.startswith("-"):
                         card_info = "- " + card_info
                     log(f"Parcelamento encontrado: {card_info}")
-        except:
-            # Fallback para seletores antigos
-            installment_info = []
-            card_selectors = [
-                "div.sc-4f698d6c-0.hkfkrb",
-                "div[class*='installment']",
-                "div[class*='parcel']",
-                "span[class*='installment']",
-                "div[class*='payment']"
-            ]
-            
-            for selector in card_selectors:
-                try:
-                    card_elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                    for elem in card_elements:
-                        text = elem.text.strip()
-                        if 'x' in text and ('R$' in text or 'reais' in text.lower()):
-                            # Separa as informações de parcelamento
-                            lines = text.split('\n')
-                            for line in lines:
-                                line = line.strip()
-                                if line and ('x' in line or 'cartão' in line.lower() or 'juros' in line.lower()):
-                                    installment_info.append(line)
-                            break
-                    if installment_info:
-                        break
-                except:
-                    continue
-            
-            # Formata as informações de parcelamento
-            if installment_info:
-                card_info = "\n- ".join(installment_info)
-                if not card_info.startswith("-"):
-                    card_info = "- " + card_info
+        except Exception as e:
+            log(f"Parcelamento não encontrado: {str(e)}")
+            card_info = ""
         
         # Avaliações
         rating = None
