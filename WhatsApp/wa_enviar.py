@@ -57,10 +57,14 @@ class WhatsAppAPI:
                 return True
             else:
                 log(f"Erro ao enviar mídia: {resp.status_code} - {resp.text}")
-                return False
+                # Fallback: tenta enviar só o texto
+                log(f"Tentando fallback: enviando só o texto para {chat_id}")
+                return self.send_text(chat_id, message)
         except Exception as e:
             log(f"Erro ao enviar mídia: {str(e)}")
-            return False
+            # Fallback: tenta enviar só o texto
+            log(f"Tentando fallback: enviando só o texto para {chat_id}")
+            return self.send_text(chat_id, message)
 
 def send_whatsapp_to_multiple_targets(message, image_url=None):
     from dotenv import load_dotenv
