@@ -10,6 +10,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from difflib import SequenceMatcher
 from collections import deque
 from Telegram.tl_enviar import send_telegram_message
+from WhatsApp.wa_enviar import send_whatsapp_to_multiple_targets
 import json
 import unicodedata
 from collections import deque
@@ -615,6 +616,12 @@ def check_promotions():
                         )
                     except Exception as e:
                         log(f"Erro ao enviar com foto para Telegram: {str(e)}")
+
+                # Envia para WhatsApp (grupo e canal)
+                whatsapp_results = send_whatsapp_to_multiple_targets(
+                    message=message,
+                    image_url=image_url
+                )
 
                 if telegram_success:
                     if not TEST_MODE:

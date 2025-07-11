@@ -22,6 +22,7 @@ import schedule
 import subprocess
 from collections import deque
 import sys
+from WhatsApp.wa_enviar import send_whatsapp_to_multiple_targets
 
 load_dotenv()
 
@@ -892,6 +893,13 @@ def run_scraper():
             try:
                 # Tenta enviar o produto
                 enviado_telegram = send_telegram_message([produto], driver, sent_products)
+                
+                # Envia para WhatsApp (grupo e canal)
+                if produto.get('mensagem_formatada'):
+                    whatsapp_results = send_whatsapp_to_multiple_targets(
+                        message=produto['mensagem_formatada'],
+                        image_url=produto.get('imagem_url')
+                    )
                 
                 if enviado_telegram:
                     for nome_produto in enviado_telegram:

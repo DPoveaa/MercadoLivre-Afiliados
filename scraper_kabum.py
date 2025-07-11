@@ -22,7 +22,7 @@ import platform
 import requests
 import subprocess
 from collections import deque
-from WhatsApp.wa_enviar import send_whatsapp_message
+from WhatsApp.wa_enviar import send_whatsapp_to_multiple_targets
 
 sys.stdout.reconfigure(line_buffering=True)
 
@@ -913,8 +913,8 @@ def check_promotions():
                     bot_token=TELEGRAM_BOT_TOKEN,
                     chat_id=TELEGRAM_GROUP_ID
                 )
-                # Envia para o WhatsApp
-                send_whatsapp_message(
+                # Envia para WhatsApp (grupo e canal)
+                whatsapp_results = send_whatsapp_to_multiple_targets(
                     message=message,
                     image_url=product.get('image_url')
                 )
