@@ -88,9 +88,30 @@ def notify_telegram_connection_issue():
     from Telegram.tl_enviar import send_telegram_message
     load_dotenv()
     TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+    TELEGRAM_CHAT_ID1 = os.getenv("TELEGRAM_CHAT_ID")
+    TELEGRAM_CHAT_ID2 = os.getenv("TELEGRAM_CHAT_ID2")
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID1:
         log("Erro: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurados")
         return False
-    message = "⚠️ *ALERTA: Problema de Conexão WhatsApp*\n\nO WhatsApp desconectou ou precisa de reautenticação.\nAcesse a interface do WAHA para reconectar.\n\n📱 *Interface:* http://localhost:3000"
-    return send_telegram_message(message=message, bot_token=TELEGRAM_BOT_TOKEN, chat_id=TELEGRAM_CHAT_ID) 
+    message = (
+        "⚠️ *ALERTA: Problema de Conexão WhatsApp*\n\n"
+        "O WhatsApp desconectou ou precisa de reautenticação.\n"
+        "Acesse a interface do WAHA para reconectar.\n\n"
+        "*Acesso local:* http://192.168.15.50:3000\n"
+        "*Acesso online:* http://botforge.myddns.me:3000\n"
+    )
+    results = {}
+    # Envia para o primeiro chat
+    results['chat1'] = send_telegram_message(
+        message=message,
+        bot_token=TELEGRAM_BOT_TOKEN,
+        chat_id=TELEGRAM_CHAT_ID1
+    )
+    # Envia para o segundo chat, se existir
+    if TELEGRAM_CHAT_ID2:
+        results['chat2'] = send_telegram_message(
+            message=message,
+            bot_token=TELEGRAM_BOT_TOKEN,
+            chat_id=TELEGRAM_CHAT_ID2
+        )
+    return results 

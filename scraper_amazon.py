@@ -23,6 +23,7 @@ import subprocess
 from collections import deque
 import sys
 from WhatsApp.wa_enviar import send_whatsapp_to_multiple_targets
+from WhatsApp.monitor import wait_for_whatsapp_auth
 
 load_dotenv()
 
@@ -1000,4 +1001,5 @@ def schedule_scraper():
             time.sleep(60)  # Espera 1 minuto antes de tentar novamente
 
 if __name__ == "__main__":
+    wait_for_whatsapp_auth()
     schedule_scraper()  

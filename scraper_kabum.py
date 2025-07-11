@@ -23,6 +23,7 @@ import requests
 import subprocess
 from collections import deque
 from WhatsApp.wa_enviar import send_whatsapp_to_multiple_targets
+from WhatsApp.monitor import wait_for_whatsapp_auth
 
 sys.stdout.reconfigure(line_buffering=True)
 
@@ -980,4 +981,5 @@ if __name__ == "__main__":
         sys.exit(1)
     
     log("Iniciando scraper da Kabum...")
+    wait_for_whatsapp_auth()
     schedule_scraper()

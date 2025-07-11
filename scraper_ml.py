@@ -29,6 +29,7 @@ import time
 import requests
 import schedule
 import sys
+from WhatsApp.monitor import wait_for_whatsapp_auth
 
 sys.stdout.reconfigure(line_buffering=True)
 
@@ -702,4 +703,5 @@ def schedule_scraper():
 
 
 if __name__ == "__main__":
+    wait_for_whatsapp_auth()
     schedule_scraper()
