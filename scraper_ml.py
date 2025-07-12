@@ -139,6 +139,9 @@ def is_similar(a: str, b: str, thresh: float = SIMILARITY_THRESHOLD) -> bool:
     
 # Função para carregar o histórico de promoções
 def load_promo_history() -> deque:
+    if TEST_MODE:
+        # Em modo de teste, não lê arquivo algum
+        return deque(maxlen=MAX_HISTORY_SIZE)
     try:
         with open(HISTORY_FILE, 'r') as f:
             nomes = json.load(f)
@@ -148,6 +151,9 @@ def load_promo_history() -> deque:
 
 # Função para salvar o histórico
 def save_promo_history(history: deque):
+    if TEST_MODE:
+        # Em modo de teste, não salva nada
+        return
     with open(HISTORY_FILE, 'w') as f:
         json.dump(list(history), f)
 

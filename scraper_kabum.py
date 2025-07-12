@@ -171,6 +171,9 @@ def init_driver():
 
 def load_promo_history():
     """Carrega o histórico de nomes de produtos já enviados"""
+    if TEST_MODE:
+        # Em modo de teste, não lê arquivo algum
+        return []
     try:
         with open(HISTORY_FILE, 'r') as f:
             return json.load(f)
@@ -179,6 +182,9 @@ def load_promo_history():
 
 def save_promo_history(history):
     """Salva o histórico de nomes de produtos"""
+    if TEST_MODE:
+        # Em modo de teste, não salva nada
+        return
     with open(HISTORY_FILE, 'w') as f:
         json.dump(history, f)
 

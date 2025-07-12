@@ -167,7 +167,9 @@ def is_similar(a: str, b: str, thresh: float = SIMILARITY_THRESHOLD) -> bool:
     return score >= thresh
 
 def load_sent_products():
-    """Load the list of previously sent products from JSON file."""
+    if TEST_MODE:
+        # Em modo de teste, não lê arquivo algum
+        return []
     try:
         if os.path.exists('promocoes_amazon.json'):
             with open('promocoes_amazon.json', 'r', encoding='utf-8') as f:
@@ -184,7 +186,9 @@ def load_sent_products():
         return []
 
 def save_sent_products(products):
-    """Save the list of sent products to JSON file."""
+    if TEST_MODE:
+        # Em modo de teste, não salva nada
+        return
     try:
         # Se atingiu o limite, remove os mais antigos
         if len(products) > MAX_HISTORY_SIZE:
