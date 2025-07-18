@@ -892,23 +892,14 @@ def run_scraper():
     print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Iniciando execução do scraper...")
 
     chrome_options = Options()
-    chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--start-maximized")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--enable-unsafe-swiftshader")
-
-    # Diretório persistente para dados do Chrome
-    if platform.system() == 'Windows':
-        user_data_dir = "C:\\Temp\\chrome-user-data"
-    else:
-        user_data_dir = "/home/povea/chrome-user-data"
-    os.makedirs(user_data_dir, exist_ok=True)
-    chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
-    print(f"Usando diretório temporário do Chrome: {user_data_dir}")
 
     if platform.system() == 'Windows':
         service = Service(ChromeDriverManager().install())
