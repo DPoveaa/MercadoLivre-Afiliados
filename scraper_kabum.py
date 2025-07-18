@@ -155,7 +155,17 @@ def init_driver():
     options.add_argument('--memory-pressure-off')
     options.add_argument('--max_old_space_size=4096')
     options.add_argument('--disable-background-networking')
-    
+
+    # Diretório persistente para dados do Chrome
+    import platform
+    if platform.system() == 'Windows':
+        user_data_dir = "C:\\Temp\\chrome-user-data"
+    else:
+        user_data_dir = "/home/povea/chrome-user-data"
+    os.makedirs(user_data_dir, exist_ok=True)
+    options.add_argument(f"--user-data-dir={user_data_dir}")
+    log(f"Usando diretório temporário do Chrome: {user_data_dir}")
+
     try:
         driver = uc.Chrome(
             options=options,
