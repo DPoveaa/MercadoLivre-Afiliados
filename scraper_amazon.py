@@ -893,8 +893,7 @@ def run_scraper():
     print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Iniciando execução do scraper...")
 
     # Definir diretório temporário customizado para Chrome/Chromedriver
-    custom_tmp = '/tmp/chrome_tmp'
-    os.makedirs(custom_tmp, exist_ok=True)
+    custom_tmp = tempfile.mkdtemp(prefix='chrome_tmp_')
     os.environ['TMPDIR'] = custom_tmp
     os.environ['TEMP'] = custom_tmp
     os.environ['TMP'] = custom_tmp
