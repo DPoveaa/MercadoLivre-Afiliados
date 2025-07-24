@@ -23,6 +23,7 @@ import subprocess
 from collections import deque
 import sys
 from WhatsApp.wa_green_api import send_whatsapp_message
+import tempfile
 
 load_dotenv()
 
@@ -891,6 +892,12 @@ def run_scraper():
     """Função principal que executa o scraper."""
     print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Iniciando execução do scraper...")
 
+    # Definir diretório temporário customizado para Chrome/Chromedriver
+    custom_tmp = tempfile.mkdtemp(prefix='chrome_tmp_')
+    os.environ['TMPDIR'] = custom_tmp
+    os.environ['TEMP'] = custom_tmp
+    os.environ['TMP'] = custom_tmp
+
     chrome_options = Options()
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
@@ -900,6 +907,9 @@ def run_scraper():
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--enable-unsafe-swiftshader")
+    # Adicionar diretórios temporários customizados
+    chrome_options.add_argument(f'--user-data-dir={custom_tmp}/user_data')
+    chrome_options.add_argument(f'--disk-cache-dir={custom_tmp}/cache')
 
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=chrome_options)
