@@ -901,11 +901,7 @@ def run_scraper():
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--enable-unsafe-swiftshader")
 
-    if platform.system() == 'Windows':
-        service = Service(ChromeDriverManager().install())
-    else:
-        service = Service(executable_path="/usr/bin/chromedriver")
-
+    service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=chrome_options)
 
 
