@@ -210,6 +210,43 @@ def is_product_already_sent(product_name, sent_products):
             return True
     return False
 
+def validate_product_data(product):
+    """Valida se o produto tem todos os campos obrigatórios para envio."""
+    required_fields = {
+        'nome': 'Nome do produto',
+        'valor_desconto': 'Valor com desconto',
+        'link': 'Link do produto'
+    }
+    
+    missing_fields = []
+    
+    # Verifica campos obrigatórios
+    for field, description in required_fields.items():
+        if not product.get(field) or str(product.get(field)).strip() == '':
+            missing_fields.append(description)
+    
+    # Validações específicas
+    if product.get('nome') and len(product.get('nome').strip()) < 3:
+        missing_fields.append('Nome muito curto')
+    
+    if product.get('valor_desconto') and not re.search(r'R\$\s*\d+', product.get('valor_desconto')):
+        missing_fields.append('Valor com desconto inválido')
+    
+    if product.get('link') and not product.get('link').startswith(('http://', 'https://')):
+        missing_fields.append('Link inválido')
+    
+    # Verifica se tem imagem válida
+    if not product.get('imagem') or not is_valid_image_url(product.get('imagem')):
+        missing_fields.append('Imagem válida')
+    
+    if missing_fields:
+        print(f"❌ Produto rejeitado - Campos obrigatórios ausentes: {', '.join(missing_fields)}")
+        print(f"   Produto: {product.get('nome', 'Sem nome')[:50]}...")
+        return False
+    
+    print(f"✅ Produto validado com sucesso: {product.get('nome', 'Sem nome')[:50]}...")
+    return True
+
 def get_deals_with_discounts(driver, category_name):
     """Coleta descontos e links dos produtos de uma categoria específica."""
     log(f"Coletando ofertas da categoria: {category_name}")
@@ -273,19 +310,21 @@ def get_alternative_image(driver, product_name, product_url):
     try:
         # Navega para a URL do produto
         driver.get(product_url)
-        time.sleep(2)  # Pequena pausa para garantir que a página carregue
+        time.sleep(3)  # Aumenta o tempo de espera para garantir carregamento
 
-        # Lista de seletores CSS para tentar encontrar a imagem
+        # Lista de seletores CSS para tentar encontrar a imagem (ordenados por prioridade)
         selectors = [
+            "#landingImage[data-old-hires]",  # Imagem principal com alta resolução
+            "img[data-old-hires]",  # Qualquer imagem com alta resolução
             "#landingImage",  # Imagem principal
             "#imgTagWrapperId img",  # Imagem dentro do wrapper
             "#main-image-container img",  # Qualquer imagem no container principal
             ".imgTagWrapper img",  # Imagens nos wrappers
-            "img[data-old-hires]",  # Imagens com versão de alta resolução
             "#imageBlock img",  # Imagens no bloco de imagens
             ".a-dynamic-image",  # Imagens dinâmicas
             ".a-stretch-vertical",  # Imagens esticadas verticalmente
-            ".a-stretch-horizontal"  # Imagens esticadas horizontalmente
+            ".a-stretch-horizontal",  # Imagens esticadas horizontalmente
+            "img[data-a-dynamic-image]"  # Imagens com dados dinâmicos
         ]
 
         # Tenta cada seletor
@@ -298,12 +337,14 @@ def get_alternative_image(driver, product_name, product_url):
                     data_old_hires = element.get_attribute('data-old-hires')
                     data_dynamic_image = element.get_attribute('data-a-dynamic-image')
                     
-                    # Prioriza imagens de alta resolução
+                    # Prioriza imagens de alta resolução (data-old-hires)
                     if data_old_hires and is_valid_image_url(data_old_hires):
+                        print(f"✅ Imagem encontrada via data-old-hires: {data_old_hires}")
                         return data_old_hires
                     
-                    # Tenta a URL normal
+                    # Tenta a URL normal se for válida
                     if src and is_valid_image_url(src):
+                        print(f"✅ Imagem encontrada via src: {src}")
                         return src
                     
                     # Tenta extrair do atributo data-a-dynamic-image
@@ -311,28 +352,41 @@ def get_alternative_image(driver, product_name, product_url):
                         try:
                             # O atributo data-a-dynamic-image é um JSON com URLs e dimensões
                             dynamic_images = json.loads(data_dynamic_image)
-                            # Pega a URL com a maior resolução
-                            largest_url = max(dynamic_images.items(), key=lambda x: x[1][0])[0]
-                            if is_valid_image_url(largest_url):
-                                return largest_url
-                        except:
-                            pass
+                            if dynamic_images:
+                                # Pega a URL com a maior resolução
+                                largest_url = max(dynamic_images.items(), key=lambda x: x[1][0])[0]
+                                if is_valid_image_url(largest_url):
+                                    print(f"✅ Imagem encontrada via data-a-dynamic-image: {largest_url}")
+                                    return largest_url
+                        except Exception as e:
+                            print(f"Erro ao processar data-a-dynamic-image: {e}")
+                            continue
 
             except Exception as e:
                 print(f"Erro ao tentar seletor {selector}: {e}")
                 continue
 
-        # Se não encontrou nenhuma imagem válida, tenta extrair do HTML
+        # Se não encontrou nenhuma imagem válida, tenta extrair do HTML com regex mais específico
         try:
             html = driver.page_source
-            # Procura por URLs de imagem no HTML
-            img_urls = re.findall(r'https://m\.media-amazon\.com/images/I/[^"\']+\.(?:jpg|jpeg|png)', html)
-            for url in img_urls:
-                if is_valid_image_url(url):
-                    return url
+            # Procura por URLs de imagem no HTML com padrões mais específicos
+            img_patterns = [
+                r'https://m\.media-amazon\.com/images/I/[^"\']+\._AC_SL\d+_\.jpg',  # Padrão SL (high-res)
+                r'https://m\.media-amazon\.com/images/I/[^"\']+\._AC_SX\d+_\.jpg',  # Padrão SX
+                r'https://m\.media-amazon\.com/images/I/[^"\']+\._AC_SY\d+_\.jpg',  # Padrão SY
+                r'https://m\.media-amazon\.com/images/I/[^"\']+\.jpg'  # Padrão geral
+            ]
+            
+            for pattern in img_patterns:
+                img_urls = re.findall(pattern, html)
+                for url in img_urls:
+                    if is_valid_image_url(url):
+                        print(f"✅ Imagem encontrada via regex: {url}")
+                        return url
         except Exception as e:
             print(f"Erro ao extrair URLs do HTML: {e}")
 
+        print(f"❌ Nenhuma imagem válida encontrada para {product_name}")
         return None
     except Exception as e:
         print(f"Erro ao buscar imagem alternativa para {product_name}: {e}")
@@ -397,14 +451,14 @@ def send_telegram_message(products, driver, sent_products):
 
     for product in products:
         try:
-            # Verifica campos mínimos obrigatórios
-            if not product.get('nome') or not product.get('valor_desconto') or not product.get('link'):
-                print(f"Produto inválido: {product.get('nome')}")
+            # Validação rigorosa de todos os campos obrigatórios
+            if not validate_product_data(product):
+                print(f"❌ Produto rejeitado por validação: {product.get('nome', 'Sem nome')[:50]}...")
                 continue
 
             # Check if product was already sent
             if is_product_already_sent(product['nome'], sent_products):
-                print(f"Produto já enviado anteriormente: {product['nome']}")
+                print(f"⏭️ Produto já enviado anteriormente: {product['nome'][:50]}...")
                 continue
 
             # Monta mensagem no padrão solicitado, com uma linha em branco entre cada campo
@@ -773,12 +827,56 @@ def generate_affiliate_links(driver, product_links):
             except:
                 product_info['parcelamento'] = None
             try:
-                # Imagem
-                image_element = WebDriverWait(driver, 5).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "#main-image-container img")))
-                product_info['imagem'] = image_element.get_attribute('src')
-            except:
-                pass
+                # Imagem - tenta múltiplos seletores para garantir captura
+                image_selectors = [
+                    "#landingImage[data-old-hires]",  # Prioriza alta resolução
+                    "img[data-old-hires]",
+                    "#landingImage",
+                    "#main-image-container img",
+                    "#imgTagWrapperId img",
+                    ".imgTagWrapper img",
+                    "#imageBlock img"
+                ]
+                
+                image_found = False
+                for selector in image_selectors:
+                    try:
+                        image_element = WebDriverWait(driver, 3).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+                        
+                        # Tenta obter a melhor URL da imagem
+                        data_old_hires = image_element.get_attribute('data-old-hires')
+                        src = image_element.get_attribute('src')
+                        
+                        if data_old_hires and is_valid_image_url(data_old_hires):
+                            product_info['imagem'] = data_old_hires
+                            print(f"✅ Imagem capturada (alta res): {data_old_hires}")
+                            image_found = True
+                            break
+                        elif src and is_valid_image_url(src):
+                            product_info['imagem'] = src
+                            print(f"✅ Imagem capturada (normal): {src}")
+                            image_found = True
+                            break
+                    except:
+                        continue
+                
+                # Se não encontrou imagem válida, tenta busca alternativa
+                if not image_found:
+                    print(f"⚠️ Imagem não encontrada com seletores padrão, tentando busca alternativa...")
+                    alternative_image = get_alternative_image(driver, product_info['nome'], url)
+                    if alternative_image:
+                        product_info['imagem'] = alternative_image
+                        print(f"✅ Imagem alternativa encontrada: {alternative_image}")
+                    else:
+                        print(f"❌ Nenhuma imagem válida encontrada para {product_info['nome']}")
+                        # Se não tem imagem válida, rejeita o produto
+                        continue
+                        
+            except Exception as e:
+                print(f"❌ Erro ao capturar imagem: {e}")
+                # Se não conseguiu capturar imagem, rejeita o produto
+                continue
 
             product_data.append(product_info)
             time.sleep(2)
@@ -941,6 +1039,12 @@ def run_scraper():
         
         for i, produto in enumerate(products_data, 1):
             print(f"📦 Processando produto {i}/{len(products_data)}: {produto.get('nome', 'Sem nome')[:50]}...")
+            
+            # Validação rigorosa antes de processar
+            if not validate_product_data(produto):
+                print(f"❌ Produto rejeitado por validação: {produto.get('nome', 'Sem nome')[:50]}...")
+                produtos_nao_enviados.append(produto.get('nome', 'Sem nome'))
+                continue
             
             # Checa se já foi enviado
             if is_product_already_sent(produto['nome'], sent_products):
