@@ -271,7 +271,7 @@ def wpp_get_qrcode_bytes():
     try:
         url = f"{WPP_BASE_URL}/api/{WPP_SESSION}/start-session"
         body = {"waitQrCode": True}
-        r = requests.post(url, headers=_wpp_headers(), json=body, timeout=30)
+        r = requests.post(url, headers=_wpp_headers(), json=body, timeout=65)
         if r.status_code == 200:
             j = {}
             try:
@@ -457,9 +457,10 @@ def init_driver():
         browser_executable_path = None
     
     try:
+        is_linux = platform.system() == 'Linux'
         driver = uc.Chrome(
             options=options,
-            headless=False,
+            headless=True if is_linux else False,
             driver_executable_path=ChromeDriverManager().install(),
             browser_executable_path=browser_executable_path
         )
@@ -471,7 +472,7 @@ def init_driver():
         try:
             driver = uc.Chrome(
                 options=options,
-                headless=False,
+                headless=True if is_linux else False,
                 driver_executable_path=ChromeDriverManager().install()
             )
             log("Navegador stealth iniciado (sem browser_executable_path)")

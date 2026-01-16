@@ -28,9 +28,26 @@ async function startWpp(sessionName) {
 
     status = 'STARTING';
     try {
+        const isLinux = process.platform === 'linux';
+        let executablePath = undefined;
+        if (isLinux) {
+            const candidates = ['/usr/bin/google-chrome', '/usr/bin/chromium-browser', '/snap/bin/chromium', '/usr/bin/chromium'];
+            for (const p of candidates) {
+                try {
+                    if (fs.existsSync(p)) {
+                        executablePath = p;
+                        break;
+                    }
+                } catch {}
+            }
+        }
         const tokensRoot = './tokens';
+        try {
+            fs.mkdirSync(path.join(tokensRoot, sessionName), { recursive: true });
+        } catch {}
         client = await wppconnect.create({
             session: sessionName,
+            userDataDir: path.join('./tokens', sessionName, 'userData'),
             catchQR: (base64Qr, asciiQR) => {
                 currentQr = base64Qr && base64Qr.startsWith('data:') ? base64Qr : `data:image/png;base64,${base64Qr}`;
                 status = 'QRCODE';
@@ -47,7 +64,7 @@ async function startWpp(sessionName) {
             tokenStore: 'file',
             headless: true,
             devtools: false,
-            useChrome: false, // Use bundled chromium from puppeteer
+            useChrome: !!executablePath,
             debug: true,
             logQR: true,
             autoClose: 0,
@@ -59,17 +76,25 @@ async function startWpp(sessionName) {
                 '--disable-accelerated-2d-canvas',
                 '--no-first-run',
                 '--no-zygote',
-                '--disable-gpu'
+                '--disable-gpu',
+                '--remote-debugging-port=9222',
+                '--window-size=1280,720',
+                '--disable-features=VizDisplayCompositor'
             ],
             puppeteerOptions: {
+                executablePath: executablePath,
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
                     '--disable-dev-tools',
-                    '--disable-software-rasterizer'
-                ]
+                    '--disable-software-rasterizer',
+                    '--remote-debugging-port=9222',
+                    '--window-size=1280,720',
+                    '--disable-features=VizDisplayCompositor'
+                ],
+                headless: 'new'
             }
         });
         // Do not call client.start() to avoid premature auto close behavior; QR will be captured via catchQR.
