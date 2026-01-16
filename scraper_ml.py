@@ -312,16 +312,6 @@ def wpp_check_connection_and_notify(admin_chat_ids):
             data = r.json() if "application/json" in r.headers.get("content-type", "") else {}
             state = str(data.get("state", "")).upper()
             connected = state in ("CONNECTED", "INCHAT", "ISLOGGED")
-        if not connected:
-            try:
-                url_status = f"{WPP_BASE_URL}/api/{WPP_SESSION}/status-session"
-                r_s = requests.get(url_status, headers=_wpp_headers(), timeout=10)
-                if r_s.status_code == 200:
-                    txt = r_s.text.strip().upper()
-                    if txt in ("CONNECTED", "INCHAT", "ISLOGGED"):
-                        connected = True
-            except Exception:
-                pass
         if not connected and admin_chat_ids:
             msg = "🚨 WhatsApp desconectado ou requer QR Code no WPPConnect.\nApenas Telegram será usado até reconectar."
             for admin_id in admin_chat_ids:

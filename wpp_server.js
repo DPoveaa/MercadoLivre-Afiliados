@@ -28,7 +28,7 @@ async function startWpp(sessionName) {
 
     status = 'STARTING';
     try {
-        const tokensRoot = path.join(__dirname, 'tokens');
+        const tokensRoot = './tokens';
         client = await wppconnect.create({
             session: sessionName,
             catchQR: (base64Qr, asciiQR) => {
@@ -36,7 +36,7 @@ async function startWpp(sessionName) {
                 status = 'QRCODE';
             },
             statusFind: (statusSession, session) => {
-                if (statusSession === 'inChat' || statusSession === 'isLogged' || statusSession === 'qrReadSuccess') {
+                if (statusSession === 'inChat' || statusSession === 'isLogged') {
                     status = 'CONNECTED';
                     currentQr = null;
                 } else {
@@ -49,8 +49,8 @@ async function startWpp(sessionName) {
             devtools: false,
             useChrome: false, // Use bundled chromium from puppeteer
             debug: true,
-            logQR: false,
-            autoClose: false,
+            logQR: true,
+            autoClose: 0,
             updatesLog: true,
             browserArgs: [
                 '--no-sandbox',
@@ -60,7 +60,17 @@ async function startWpp(sessionName) {
                 '--no-first-run',
                 '--no-zygote',
                 '--disable-gpu'
-            ]
+            ],
+            puppeteerOptions: {
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--disable-dev-tools',
+                    '--disable-software-rasterizer'
+                ]
+            }
         });
         // Do not call client.start() to avoid premature auto close behavior; QR will be captured via catchQR.
         starting = false;
