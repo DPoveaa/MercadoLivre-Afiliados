@@ -25,3 +25,4 @@ promocoes*
 **.node-persist**
 **_IGNORE_**
 # end managed
+/tokens
