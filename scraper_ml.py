@@ -217,29 +217,7 @@ def ensure_wpp_server(timeout=90):
                 return True
         except Exception:
             pass
-        log("Servidor WPPConnect existente sem QR; tentando fallback em nova porta")
-        try:
-            parsed = urlparse(WPP_BASE_URL)
-            base_port = parsed.port or (443 if parsed.scheme == "https" else 80)
-            fallback_port = base_port + 1
-            env = os.environ.copy()
-            env["PORT"] = str(fallback_port)
-            log(f"Iniciando fallback WPP server PORT={fallback_port} cmd='{WPP_NODE_CMD}'")
-            WPP_SERVER_PROCESS = subprocess.Popen(WPP_NODE_CMD, shell=True, env=env)
-            start = time.time()
-            new_url = f"{parsed.scheme}://{parsed.hostname}:{fallback_port}"
-            while time.time() - start < timeout:
-                try:
-                    r = requests.get(f"{new_url}/api-docs", timeout=3)
-                    if r.status_code == 200:
-                        globals()["WPP_BASE_URL"] = new_url
-                        log(f"WPPConnect-Server alternado para {new_url}")
-                        return True
-                except Exception:
-                    pass
-                time.sleep(2)
-        except Exception as e:
-            log(f"Falha ao iniciar fallback WPPConnect-Server: {e}")
+        log("Servidor WPPConnect existente sem QR; mantendo porta atual (PM2/Ubuntu)")
         return True
     try:
         log("Iniciando WPPConnect-Server local...")

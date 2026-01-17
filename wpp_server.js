@@ -83,7 +83,7 @@ async function startWpp(sessionName) {
             useChrome: !!executablePath,
             debug: true,
             logQR: true,
-            autoClose: -1,
+            autoClose: 0,
             waitForLogin: true,
             updatesLog: true,
             browserArgs: [
@@ -113,7 +113,7 @@ async function startWpp(sessionName) {
                     '--disable-features=VizDisplayCompositor',
                     '--disable-blink-features=AutomationControlled'
                 ],
-                headless: 'new'
+                headless: true
             }
         });
         // Do not call client.start() to avoid premature auto close behavior; QR will be captured via catchQR.
