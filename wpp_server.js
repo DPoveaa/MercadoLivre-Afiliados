@@ -83,8 +83,8 @@ async function startWpp(sessionName) {
             useChrome: !!executablePath,
             debug: true,
             logQR: true,
-            autoClose: -1,
-            waitForLogin: false,
+            autoClose: 0,
+            waitForLogin: true,
             updatesLog: true,
             browserArgs: [
                 '--no-sandbox',
@@ -116,8 +116,21 @@ async function startWpp(sessionName) {
                 headless: true
             }
         });
-        // Do not call client.start() to avoid premature auto close behavior; QR will be captured via catchQR.
         console.log('[WPP] client created');
+        try {
+            await client.start();
+            console.log('[WPP] client.start() called');
+        } catch (e) {
+            console.log('[WPP] client.start() error', e);
+        }
+        setTimeout(async () => {
+            try {
+                const logged = await client.isLoggedIn();
+                console.log(`[WPP] isLoggedIn=${logged}`);
+            } catch (e) {
+                console.log('[WPP] isLoggedIn check error', e);
+            }
+        }, 5000);
         starting = false;
     } catch (error) {
         console.error('Error starting WPPConnect:', error);
@@ -177,6 +190,27 @@ app.get('/api/:session/getQrCode', (req, res) => {
 app.get('/api/:session/status-session', (req, res) => {
     console.log(`[API] status-session ${status}`);
     res.status(200).send(status);
+});
+
+app.get('/api/:session/debug', async (req, res) => {
+    const session = req.params.session;
+    let logged = null;
+    try {
+        if (client) {
+            logged = await client.isLoggedIn();
+        }
+    } catch (e) {
+        logged = `error: ${e}`;
+    }
+    res.json({
+        session,
+        state: status,
+        hasQr: !!currentQr,
+        logged,
+        tokensRoot: path.resolve('./tokens'),
+        userDataDir: path.resolve(path.join('./tokens', session, 'userData')),
+        platform: process.platform
+    });
 });
 
 app.post('/api/:session/send-message', async (req, res) => {
