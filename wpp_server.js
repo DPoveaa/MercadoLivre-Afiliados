@@ -83,8 +83,8 @@ async function startWpp(sessionName) {
             useChrome: !!executablePath,
             debug: true,
             logQR: true,
-            autoClose: 0,
-            waitForLogin: true,
+            autoClose: -1,
+            waitForLogin: false,
             updatesLog: true,
             browserArgs: [
                 '--no-sandbox',
