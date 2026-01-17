@@ -67,6 +67,13 @@ async function startWpp(sessionName) {
                 } else {
                     console.log(`[WPP] statusFind=${statusSession}`);
                     status = statusSession.toUpperCase();
+                    if (statusSession === 'autocloseCalled' || statusSession === 'browserClose') {
+                        console.log('[WPP] browser closed, resetting client');
+                        try { client && client.close(); } catch {}
+                        client = null;
+                        currentQr = null;
+                        starting = false;
+                    }
                 }
             },
             folderNameToken: tokensRoot,
@@ -76,7 +83,8 @@ async function startWpp(sessionName) {
             useChrome: !!executablePath,
             debug: true,
             logQR: true,
-            autoClose: 0,
+            autoClose: -1,
+            waitForLogin: true,
             updatesLog: true,
             browserArgs: [
                 '--no-sandbox',
@@ -88,7 +96,8 @@ async function startWpp(sessionName) {
                 '--disable-gpu',
                 '--remote-debugging-port=9222',
                 '--window-size=1280,720',
-                '--disable-features=VizDisplayCompositor'
+                '--disable-features=VizDisplayCompositor',
+                '--disable-blink-features=AutomationControlled'
             ],
             puppeteerOptions: {
                 executablePath: executablePath,
@@ -101,7 +110,8 @@ async function startWpp(sessionName) {
                     '--disable-software-rasterizer',
                     '--remote-debugging-port=9222',
                     '--window-size=1280,720',
-                    '--disable-features=VizDisplayCompositor'
+                    '--disable-features=VizDisplayCompositor',
+                    '--disable-blink-features=AutomationControlled'
                 ],
                 headless: 'new'
             }
@@ -120,7 +130,11 @@ async function startWpp(sessionName) {
 
 app.post('/api/:session/start-session', async (req, res) => {
     const session = req.params.session;
-    startWpp(session); // Async start
+    if (!client) {
+        startWpp(session); // Async start
+    } else {
+        console.log('[API] start-session client already exists');
+    }
     const waitQr = !!(req.body && req.body.waitQrCode);
     console.log(`[API] start-session session=${session} waitQr=${waitQr}`);
 
@@ -132,6 +146,10 @@ app.post('/api/:session/start-session', async (req, res) => {
     // Wait up to 60s for QR or connection
     const start = Date.now();
     while (Date.now() - start < 60000) {
+        if (!client && !starting) {
+            console.log('[API] start-session restarting client...');
+            startWpp(session);
+        }
         if (currentQr) {
             console.log('[API] start-session returning QR');
             return res.json({ status: status, qrcode: currentQr });
