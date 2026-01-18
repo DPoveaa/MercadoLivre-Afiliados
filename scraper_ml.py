@@ -417,6 +417,7 @@ def init_driver():
 
     def build_options():
         opts = uc.ChromeOptions()
+        opts.add_argument("--headless=new")
         opts.add_argument('--no-sandbox')
         opts.add_argument('--disable-dev-shm-usage')
         opts.add_argument('--disable-blink-features=AutomationControlled')
@@ -441,7 +442,6 @@ def init_driver():
         options = build_options()
         driver = uc.Chrome(
             options=options,
-            headless=False,  # OBRIGATÓRIO com Mercado Livre
             driver_executable_path=ChromeDriverManager().install(),
             browser_executable_path=browser_executable_path
         )
