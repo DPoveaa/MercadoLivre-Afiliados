@@ -417,54 +417,54 @@ def init_driver():
 
     def build_options():
         opts = uc.ChromeOptions()
-
-        # 🔥 ESSENCIAL PARA SERVIDOR
-        opts.add_argument("--headless=new")
-
-        opts.add_argument("--no-sandbox")
-        opts.add_argument("--disable-dev-shm-usage")
-        opts.add_argument("--disable-gpu")
-        opts.add_argument("--disable-extensions")
-        opts.add_argument("--disable-software-rasterizer")
-        opts.add_argument("--disable-setuid-sandbox")
-        opts.add_argument("--disable-blink-features=AutomationControlled")
-
-        opts.add_argument("--window-size=1920,1080")
-        opts.add_argument("--lang=pt-BR")
-
-        # UA coerente com Chrome REAL (não inventado)
+        opts.add_argument('--no-sandbox')
+        opts.add_argument('--disable-dev-shm-usage')
+        opts.add_argument('--disable-blink-features=AutomationControlled')
+        opts.add_argument('--window-size=1920,1080')
+        opts.add_argument('--lang=pt-BR')
         opts.add_argument(
-            "user-agent=Mozilla/5.0 (X11; Linux x86_64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/140.0.0.0 Safari/537.36"
+            '--user-agent=Mozilla/5.0 (X11; Linux x86_64) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/120.0.0.0 Safari/537.36'
         )
-
         return opts
 
-    # Detecta Chrome real
+    # Detecta Chrome no Linux
     browser_executable_path = None
-    if platform.system() == "Linux":
-        if os.path.exists("/usr/bin/google-chrome"):
-            browser_executable_path = "/usr/bin/google-chrome"
-        elif os.path.exists("/usr/bin/chromium-browser"):
-            browser_executable_path = "/usr/bin/chromium-browser"
+    if platform.system() == 'Linux':
+        if os.path.exists('/usr/bin/google-chrome'):
+            browser_executable_path = '/usr/bin/google-chrome'
+        elif os.path.exists('/usr/bin/chromium-browser'):
+            browser_executable_path = '/usr/bin/chromium-browser'
 
     try:
         options = build_options()
-
         driver = uc.Chrome(
             options=options,
-            browser_executable_path=browser_executable_path,
-            version_main=140,          # 🔥 BATE COM SEU CHROME
-            use_subprocess=True        # 🔥 evita crash silencioso
+            headless=False,  # OBRIGATÓRIO com Mercado Livre
+            driver_executable_path=ChromeDriverManager().install(),
+            browser_executable_path=browser_executable_path
         )
-
-        log("Navegador stealth iniciado com sucesso")
+        log("Navegador stealth iniciado")
         return driver
 
     except Exception as e:
-        log(f"Erro fatal ao iniciar navegador: {e}")
-        raise
+        log(f"Erro ao iniciar o navegador (tentativa 1): {e}")
+
+        # ⚠️ Nova instância de options (NUNCA reutilizar)
+        try:
+            options = build_options()
+            driver = uc.Chrome(
+                options=options,
+                headless=False,
+                driver_executable_path=ChromeDriverManager().install()
+            )
+            log("Navegador stealth iniciado (fallback)")
+            return driver
+
+        except Exception as e2:
+            log(f"Erro fatal ao iniciar navegador: {e2}")
+            raise
 
 def add_cookies(driver):
     """Adiciona cookies com verificação"""
