@@ -436,10 +436,9 @@ def init_driver():
         browser_executable_path = None
     
     try:
-        is_linux = platform.system() == 'Linux'
         driver = uc.Chrome(
             options=options,
-            headless=True if is_linux else False,
+            headless=false,
             driver_executable_path=ChromeDriverManager().install(),
             browser_executable_path=browser_executable_path
         )
@@ -451,7 +450,7 @@ def init_driver():
         try:
             driver = uc.Chrome(
                 options=options,
-                headless=True if is_linux else False,
+                headless=false,
                 driver_executable_path=ChromeDriverManager().install()
             )
             log("Navegador stealth iniciado (sem browser_executable_path)")
