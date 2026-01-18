@@ -415,48 +415,55 @@ def wpp_send_whatsapp(message, image_url=None):
 def init_driver():
     log("Inicializando navegador com undetected-chromedriver...")
 
-    options = uc.ChromeOptions()
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--disable-extensions')
-    options.add_argument('--window-size=1920,1080')
-    options.add_argument("--start-minimized")
-    options.add_argument('--disable-blink-features=AutomationControlled')
-    
-    # Configurações específicas por sistema operacional
+    def build_options():
+        opts = uc.ChromeOptions()
+        opts.add_argument('--no-sandbox')
+        opts.add_argument('--disable-dev-shm-usage')
+        opts.add_argument('--disable-blink-features=AutomationControlled')
+        opts.add_argument('--window-size=1920,1080')
+        opts.add_argument('--lang=pt-BR')
+        opts.add_argument(
+            '--user-agent=Mozilla/5.0 (X11; Linux x86_64) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/120.0.0.0 Safari/537.36'
+        )
+        return opts
+
+    # Detecta Chrome no Linux
+    browser_executable_path = None
     if platform.system() == 'Linux':
-        # Caminhos padrão para Linux
-        browser_executable_path = '/usr/bin/google-chrome'  # ou '/usr/bin/chromium-browser'
-        if not os.path.exists(browser_executable_path):
-            # Tenta encontrar o Chrome em outros locais comuns no Linux
-            browser_executable_path = '/usr/bin/chromium-browser' if os.path.exists('/usr/bin/chromium-browser') else None
-    else:
-        # Windows - geralmente o Chrome está no PATH
-        browser_executable_path = None
-    
+        if os.path.exists('/usr/bin/google-chrome'):
+            browser_executable_path = '/usr/bin/google-chrome'
+        elif os.path.exists('/usr/bin/chromium-browser'):
+            browser_executable_path = '/usr/bin/chromium-browser'
+
     try:
+        options = build_options()
         driver = uc.Chrome(
             options=options,
-            headless=False,
+            headless=False,  # OBRIGATÓRIO com Mercado Livre
             driver_executable_path=ChromeDriverManager().install(),
             browser_executable_path=browser_executable_path
         )
         log("Navegador stealth iniciado")
         return driver
+
     except Exception as e:
-        log(f"Erro ao iniciar o navegador: {str(e)}")
-        # Tentativa alternativa sem especificar o caminho do navegador
+        log(f"Erro ao iniciar o navegador (tentativa 1): {e}")
+
+        # ⚠️ Nova instância de options (NUNCA reutilizar)
         try:
+            options = build_options()
             driver = uc.Chrome(
                 options=options,
                 headless=False,
                 driver_executable_path=ChromeDriverManager().install()
             )
-            log("Navegador stealth iniciado (sem browser_executable_path)")
+            log("Navegador stealth iniciado (fallback)")
             return driver
+
         except Exception as e2:
-            log(f"Erro na tentativa alternativa: {str(e2)}")
+            log(f"Erro fatal ao iniciar navegador: {e2}")
             raise
 
 def add_cookies(driver):
