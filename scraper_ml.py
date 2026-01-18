@@ -200,12 +200,9 @@ def _wpp_server_is_up():
 
 def ensure_wpp_server(timeout=90):
     global WPP_SERVER_PROCESS
-    log(f"WPP ensure_wpp_server base_url={WPP_BASE_URL} session={WPP_SESSION} cmd='{WPP_NODE_CMD}' platform={platform.system()}")
     if _wpp_server_is_up():
-        log("WPP server is up, triggering start-session and checking QR")
         try:
             r = requests.post(f"{WPP_BASE_URL}/api/{WPP_SESSION}/start-session", headers=_wpp_headers(), json={}, timeout=5)
-            log(f"start-session status={getattr(r,'status_code',None)}")
         except Exception:
             r = None
         try:
@@ -213,11 +210,9 @@ def ensure_wpp_server(timeout=90):
             j2 = r2.json() if r2.status_code == 200 else {}
             b64 = j2.get("qrcode")
             if b64:
-                log(f"getQrCode returned len={len(b64)}")
                 return True
         except Exception:
             pass
-        log("Servidor WPPConnect existente sem QR; mantendo porta atual (PM2/Ubuntu)")
         return True
     try:
         log("Iniciando WPPConnect-Server local...")
@@ -255,9 +250,7 @@ def wpp_get_qrcode_bytes():
     try:
         url = f"{WPP_BASE_URL}/api/{WPP_SESSION}/start-session"
         body = {"waitQrCode": True}
-        log(f"POST {url} waitQrCode=True")
         r = requests.post(url, headers=_wpp_headers(), json=body, timeout=65)
-        log(f"start-session status={r.status_code}")
         if r.status_code == 200:
             j = {}
             try:
@@ -267,15 +260,11 @@ def wpp_get_qrcode_bytes():
             b64 = j.get("qrcode") or j.get("qrCode") or j.get("base64") or j.get("base64Qr") or j.get("qrcodeBase64")
             if b64:
                 try:
-                    decoded = base64.b64decode(b64.split(",")[-1])
-                    log(f"QR from start-session len={len(decoded)}")
-                    return decoded
+                    return base64.b64decode(b64.split(",")[-1])
                 except Exception:
                     pass
         alt = f"{WPP_BASE_URL}/api/{WPP_SESSION}/getQrCode"
-        log(f"GET {alt}")
         r2 = requests.get(alt, headers=_wpp_headers(), timeout=10)
-        log(f"getQrCode status={r2.status_code}")
         if r2.status_code == 200:
             j2 = {}
             try:
@@ -285,9 +274,7 @@ def wpp_get_qrcode_bytes():
             b64 = j2.get("qrcode") or j2.get("qrCode") or j2.get("base64") or j2.get("base64Qr") or j2.get("qrcodeBase64")
             if b64:
                 try:
-                    decoded = base64.b64decode(b64.split(",")[-1])
-                    log(f"QR from getQrCode len={len(decoded)}")
-                    return decoded
+                    return base64.b64decode(b64.split(",")[-1])
                 except Exception:
                     pass
         return None
@@ -297,14 +284,12 @@ def wpp_get_qrcode_bytes():
 def wpp_check_connection_and_notify(admin_chat_ids):
     try:
         url = f"{WPP_BASE_URL}/api/{WPP_SESSION}/check-connection-state"
-        log(f"GET {url}")
         r = requests.get(url, headers=_wpp_headers(), timeout=10)
         if r.status_code != 200:
             connected = False
         else:
             data = r.json() if "application/json" in r.headers.get("content-type", "") else {}
             state = str(data.get("state", "")).upper()
-            log(f"check-connection-state state={state}")
             connected = state in ("CONNECTED", "INCHAT", "ISLOGGED")
         if not connected and admin_chat_ids:
             msg = "🚨 WhatsApp desconectado ou requer QR Code no WPPConnect.\nApenas Telegram será usado até reconectar."
@@ -406,29 +391,23 @@ def wpp_send_whatsapp(message, image_url=None):
                 if image_url:
                     url = f"{WPP_BASE_URL}/api/{WPP_SESSION}/send-file"
                     payload = {"groupId": dest, "fileName": "image.jpg", "caption": message, "url": image_url}
-                    log(f"POST {url} group file")
                     r = requests.post(url, headers=_wpp_headers(), json=payload, timeout=20)
                 else:
                     url = f"{WPP_BASE_URL}/api/{WPP_SESSION}/send-group-message"
                     payload = {"groupId": dest, "message": message}
-                    log(f"POST {url} group text")
                     r = requests.post(url, headers=_wpp_headers(), json=payload, timeout=10)
             else:
                 phone = dest.split("@")[0]
                 if image_url:
                     url = f"{WPP_BASE_URL}/api/{WPP_SESSION}/send-file"
                     payload = {"phone": phone, "fileName": "image.jpg", "caption": message, "url": image_url}
-                    log(f"POST {url} phone file")
                     r = requests.post(url, headers=_wpp_headers(), json=payload, timeout=20)
                 else:
                     url = f"{WPP_BASE_URL}/api/{WPP_SESSION}/send-message"
                     payload = {"phone": phone, "message": message}
-                    log(f"POST {url} phone text")
                     r = requests.post(url, headers=_wpp_headers(), json=payload, timeout=10)
             if r.status_code == 200:
                 success += 1
-            else:
-                log(f"Falha envio WhatsApp status={r.status_code}")
         except Exception:
             pass
     return success > 0
