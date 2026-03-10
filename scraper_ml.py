@@ -28,7 +28,12 @@ import time
 import requests
 import schedule
 import sys
-import base64
+from WhatsApp.wpp_connect import (
+    wpp_server_is_up,
+    wpp_ensure_connection,
+    wpp_send_message,
+    wpp_check_connection_state
+)
 
 sys.stdout.reconfigure(line_buffering=True)
 
@@ -187,230 +192,7 @@ def _load_whatsapp_destinations():
         destinations.extend([c.strip() for c in channels.split(",") if c.strip()])
     return destinations
 
-def _wpp_headers():
-    return {"Content-Type": "application/json"}
 
-def _wpp_server_is_up():
-    try:
-        url = f"{WPP_BASE_URL}/api-docs"
-        r = requests.get(url, timeout=3)
-        return r.status_code == 200
-    except Exception:
-        return False
-
-def ensure_wpp_server(timeout=90):
-    global WPP_SERVER_PROCESS
-    if _wpp_server_is_up():
-        try:
-            r = requests.post(f"{WPP_BASE_URL}/api/{WPP_SESSION}/start-session", headers=_wpp_headers(), json={}, timeout=5)
-        except Exception:
-            r = None
-        try:
-            r2 = requests.get(f"{WPP_BASE_URL}/api/{WPP_SESSION}/getQrCode", headers=_wpp_headers(), timeout=5)
-            j2 = r2.json() if r2.status_code == 200 else {}
-            b64 = j2.get("qrcode")
-            if b64:
-                return True
-        except Exception:
-            pass
-        return True
-    try:
-        log("Iniciando WPPConnect-Server local...")
-        env = os.environ.copy()
-        parsed = urlparse(WPP_BASE_URL)
-        port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        env["PORT"] = str(port)
-        log(f"Iniciando WPP server PORT={port} cmd='{WPP_NODE_CMD}'")
-        WPP_SERVER_PROCESS = subprocess.Popen(WPP_NODE_CMD, shell=True, env=env)
-        start = time.time()
-        while time.time() - start < timeout:
-            if _wpp_server_is_up():
-                log("WPPConnect-Server iniciado com sucesso")
-                return True
-            time.sleep(3)
-        log("Tempo de espera esgotado ao iniciar WPPConnect-Server")
-        return False
-    except Exception as e:
-        log(f"Falha ao iniciar WPPConnect-Server: {e}")
-        return False
-
-def _send_telegram_photo_bytes(caption, image_bytes, chat_id):
-    try:
-        resp = requests.post(
-            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto",
-            data={"chat_id": chat_id, "caption": caption, "parse_mode": "Markdown"},
-            files={"photo": ("qrcode.jpg", image_bytes)},
-            timeout=20,
-        )
-        return resp.status_code == 200
-    except Exception:
-        return False
-
-def wpp_get_qrcode_bytes():
-    try:
-        url = f"{WPP_BASE_URL}/api/{WPP_SESSION}/start-session"
-        body = {"waitQrCode": True}
-        r = requests.post(url, headers=_wpp_headers(), json=body, timeout=65)
-        if r.status_code == 200:
-            j = {}
-            try:
-                j = r.json()
-            except Exception:
-                j = {}
-            b64 = j.get("qrcode") or j.get("qrCode") or j.get("base64") or j.get("base64Qr") or j.get("qrcodeBase64")
-            if b64:
-                try:
-                    return base64.b64decode(b64.split(",")[-1])
-                except Exception:
-                    pass
-        alt = f"{WPP_BASE_URL}/api/{WPP_SESSION}/getQrCode"
-        r2 = requests.get(alt, headers=_wpp_headers(), timeout=10)
-        if r2.status_code == 200:
-            j2 = {}
-            try:
-                j2 = r2.json()
-            except Exception:
-                j2 = {}
-            b64 = j2.get("qrcode") or j2.get("qrCode") or j2.get("base64") or j2.get("base64Qr") or j2.get("qrcodeBase64")
-            if b64:
-                try:
-                    return base64.b64decode(b64.split(",")[-1])
-                except Exception:
-                    pass
-        return None
-    except Exception:
-        return None
-
-def wpp_check_connection_and_notify(admin_chat_ids):
-    try:
-        url = f"{WPP_BASE_URL}/api/{WPP_SESSION}/check-connection-state"
-        r = requests.get(url, headers=_wpp_headers(), timeout=10)
-        if r.status_code != 200:
-            connected = False
-        else:
-            data = r.json() if "application/json" in r.headers.get("content-type", "") else {}
-            state = str(data.get("state", "")).upper()
-            connected = state in ("CONNECTED", "INCHAT", "ISLOGGED")
-        if not connected and admin_chat_ids:
-            msg = "🚨 WhatsApp desconectado ou requer QR Code no WPPConnect.\nApenas Telegram será usado até reconectar."
-            for admin_id in admin_chat_ids:
-                try:
-                    send_telegram_message(message=msg, bot_token=TELEGRAM_BOT_TOKEN, chat_id=admin_id)
-                except Exception:
-                    pass
-        return connected
-    except Exception:
-        return False
-
-def wpp_ensure_connection(admin_chat_ids, wait_seconds=300):
-    """
-    Verifica a conexão. Se não conectado, obtém QR Code, envia para admins
-    e aguarda conexão, atualizando o QR Code se mudar.
-    """
-    try:
-        # 1. Verifica estado inicial
-        if wpp_check_connection_and_notify([]):
-            return True
-
-        # Se não conectado, inicia loop de espera/leitura
-        log("WhatsApp desconectado. Iniciando processo de leitura do QR Code...")
-
-        start_time = time.time()
-        last_qr_b64 = None
-        # tenta começar sessão explicitamente antes de loop
-        try:
-            url_start = f"{WPP_BASE_URL}/api/{WPP_SESSION}/start-session"
-            requests.post(url_start, headers=_wpp_headers(), json={"waitQrCode": True}, timeout=15)
-        except Exception:
-            pass
-        
-        # Envia aviso inicial
-        if admin_chat_ids:
-            for admin_id in admin_chat_ids:
-                try:
-                   send_telegram_message("⚠️ WhatsApp desconectado. Preparando QR Code...", bot_token=TELEGRAM_BOT_TOKEN, chat_id=admin_id)
-                except:
-                    pass
-
-        while True:
-            # Se exceder o tempo de espera (ex: 5 min), interrompe para não bloquear indefinidamente
-            # Mas o usuário pediu para "aguardar a leitura", então poderiamos deixar infinito.
-            # Vou deixar um timeout grande renovável ou simplesmente sair após X tempo para dar chance do script rodar outras coisas?
-            # O pedido diz "aguarde a leitura", vou assumir que é bloqueante até ler.
-            # Mas por segurança, uso wait_seconds (padrão 300s = 5 min) pra não travar cronjobs pra sempre se ninguém ler.
-            if time.time() - start_time > wait_seconds:
-                log(f"Tempo limite de espera ({wait_seconds}s) pelo QR Code esgotado.")
-                return False
-
-            # Verifica se conectou
-            if wpp_check_connection_and_notify([]):
-                log("WhatsApp conectado com sucesso!")
-                if admin_chat_ids:
-                    for admin_id in admin_chat_ids:
-                         try:
-                            send_telegram_message("✅ WhatsApp conectado!", bot_token=TELEGRAM_BOT_TOKEN, chat_id=admin_id)
-                         except:
-                             pass
-                return True
-
-            # Tenta pegar QR Code
-            qr_bytes = wpp_get_qrcode_bytes()
-            
-            if qr_bytes:
-                # Compara com ultimo enviado para não floodar
-                # Como temos bytes, podemos comparar hash ou converter b64 pra string pra comparar
-                curr_b64 = base64.b64encode(qr_bytes).decode('utf-8')
-                
-                if curr_b64 != last_qr_b64:
-                    log("Novo QR Code detectado. Enviando para admins...")
-                    last_qr_b64 = curr_b64
-                    if admin_chat_ids:
-                        for admin_id in admin_chat_ids:
-                            _send_telegram_photo_bytes("📲 Escaneie o novo QR Code para conectar o WPPConnect.", qr_bytes, admin_id)
-                else:
-                    # QR Code igual, apenas aguarda
-                    pass
-            else:
-                # Se não veio QR code, pode ser falha temporaria ou sessão iniciando
-                log("Não foi possível obter QR Code (pode estar iniciando ou falha API). tentando novamente em breve...")
-            
-            time.sleep(5) # Espera 5 segundos antes de checar novamente
-
-    except Exception as e:
-        log(f"Erro no loop de conexão WPP: {str(e)}")
-        return False
-
-def wpp_send_whatsapp(message, image_url=None):
-    destinations = _load_whatsapp_destinations()
-    if not destinations:
-        return False
-    success = 0
-    for dest in destinations:
-        try:
-            if dest.endswith("@g.us"):
-                if image_url:
-                    url = f"{WPP_BASE_URL}/api/{WPP_SESSION}/send-file"
-                    payload = {"groupId": dest, "fileName": "image.jpg", "caption": message, "url": image_url}
-                    r = requests.post(url, headers=_wpp_headers(), json=payload, timeout=20)
-                else:
-                    url = f"{WPP_BASE_URL}/api/{WPP_SESSION}/send-group-message"
-                    payload = {"groupId": dest, "message": message}
-                    r = requests.post(url, headers=_wpp_headers(), json=payload, timeout=10)
-            else:
-                phone = dest.split("@")[0]
-                if image_url:
-                    url = f"{WPP_BASE_URL}/api/{WPP_SESSION}/send-file"
-                    payload = {"phone": phone, "fileName": "image.jpg", "caption": message, "url": image_url}
-                    r = requests.post(url, headers=_wpp_headers(), json=payload, timeout=20)
-                else:
-                    url = f"{WPP_BASE_URL}/api/{WPP_SESSION}/send-message"
-                    payload = {"phone": phone, "message": message}
-                    r = requests.post(url, headers=_wpp_headers(), json=payload, timeout=10)
-            if r.status_code == 200:
-                success += 1
-        except Exception:
-            pass
-    return success > 0
 
 def init_driver():
     log("Inicializando navegador com undetected-chromedriver...")
@@ -845,23 +627,22 @@ def get_product_details(driver, url, max_retries=3):
 def check_promotions():
     log("Iniciando verificação de promoções...")
     
-    # Garante que o servidor WPPConnect está rodando
-    if WHATSAPP_ENABLED:
-        if ensure_wpp_server():
-            log("Servidor WPPConnect disponível")
-        else:
-            log("Servidor WPPConnect indisponível - continuará tentando obter QR")
-    
-    # Verifica conexão do WhatsApp se habilitado
+    # Verifica conexão do WhatsApp se habilitado (Servidor deve estar rodando via PM2)
     whatsapp_connected = True
     if WHATSAPP_ENABLED:
         try:
-            whatsapp_connected = wpp_ensure_connection(ADMIN_CHAT_IDS)
-            
-            if whatsapp_connected:
-                log("✅ WhatsApp conectado e funcionando")
+            # Apenas verifica se o servidor está online primeiro
+            if not wpp_server_is_up():
+                log("⚠️ Servidor WPPConnect (PM2) está offline. Apenas Telegram será usado.")
+                whatsapp_connected = False
             else:
-                log("⚠️ WhatsApp desconectado - apenas Telegram será usado")
+                # Se online, garante a conexão (envia QR se necessário)
+                whatsapp_connected = wpp_ensure_connection(ADMIN_CHAT_IDS)
+                
+                if whatsapp_connected:
+                    log("✅ WhatsApp conectado e funcionando")
+                else:
+                    log("⚠️ WhatsApp desconectado - apenas Telegram será usado")
         except Exception as e:
             log(f"Erro ao verificar WhatsApp: {str(e)}")
             whatsapp_connected = False
@@ -909,7 +690,8 @@ def check_promotions():
                 whatsapp_success = True
                 if WHATSAPP_ENABLED and whatsapp_connected:
                     try:
-                        whatsapp_success = wpp_send_whatsapp(message=message, image_url=image_url)
+                        destinations = _load_whatsapp_destinations()
+                        whatsapp_success = wpp_send_message(destinations=destinations, message=message, image_url=image_url)
                         if whatsapp_success:
                             log("Mensagem enviada com sucesso para WhatsApp")
                         else:
@@ -918,7 +700,7 @@ def check_promotions():
                         log(f"Erro ao enviar para WhatsApp: {str(e)}")
                         whatsapp_success = False
                 elif WHATSAPP_ENABLED and not whatsapp_connected:
-                    log("WhatsApp desabilitado - apenas Telegram será usado")
+                    log("WhatsApp indisponível - apenas Telegram será usado")
                     whatsapp_success = False
 
                 # Salva no histórico se pelo menos um dos envios foi bem-sucedido

@@ -18,7 +18,12 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 import undetected_chromedriver as uc
 from webdriver_manager.chrome import ChromeDriverManager
 from Telegram.tl_enviar import send_telegram_message
-from WhatsApp.wa_green_api import send_whatsapp_message
+from WhatsApp.wpp_connect import (
+    wpp_server_is_up,
+    wpp_ensure_connection,
+    wpp_send_message,
+    wpp_check_connection_state
+)
 import platform
 import requests
 import subprocess
@@ -723,18 +728,22 @@ def check_promotions():
     """Função principal que verifica e envia promoções"""
     log("Iniciando verificação de promoções da Kabum...")
     
-    # Verifica conexão do WhatsApp se habilitado
+    # Verifica conexão do WhatsApp se habilitado (Servidor deve estar rodando via PM2)
     whatsapp_connected = True
     if WHATSAPP_ENABLED:
         try:
-            from WhatsApp.wa_green_api import GreenAPI
-            whatsapp_api = GreenAPI(GREEN_API_INSTANCE_ID, GREEN_API_TOKEN)
-            whatsapp_connected = whatsapp_api.verify_and_notify_connection(ADMIN_CHAT_IDS)
-            
-            if whatsapp_connected:
-                log("✅ WhatsApp conectado e funcionando")
+            # Verifica se o servidor WPPConnect (PM2) está online
+            if not wpp_server_is_up():
+                log("⚠️ Servidor WPPConnect (PM2) está offline. Apenas Telegram será usado.")
+                whatsapp_connected = False
             else:
-                log("⚠️ WhatsApp desconectado - apenas Telegram será usado")
+                # Se online, garante a conexão (envia QR se necessário)
+                whatsapp_connected = wpp_ensure_connection(ADMIN_CHAT_IDS)
+                
+                if whatsapp_connected:
+                    log("✅ WhatsApp conectado e funcionando")
+                else:
+                    log("⚠️ WhatsApp desconectado - apenas Telegram será usado")
         except Exception as e:
             log(f"Erro ao verificar WhatsApp: {str(e)}")
             whatsapp_connected = False
@@ -838,11 +847,12 @@ def check_promotions():
                 whatsapp_success = True
                 if WHATSAPP_ENABLED and whatsapp_connected:
                     try:
-                        whatsapp_success = send_whatsapp_message(
+                        from scraper_ml import _load_whatsapp_destinations
+                        destinations = _load_whatsapp_destinations()
+                        whatsapp_success = wpp_send_message(
+                            destinations=destinations,
                             message=message,
-                            image_url=product.get('image_url'),
-                            instance_id=GREEN_API_INSTANCE_ID,
-                            api_token=GREEN_API_TOKEN
+                            image_url=product.get('image_url')
                         )
                         if whatsapp_success:
                             log("Mensagem enviada com sucesso para WhatsApp")
@@ -852,7 +862,7 @@ def check_promotions():
                         log(f"Erro ao enviar para WhatsApp: {str(e)}")
                         whatsapp_success = False
                 elif WHATSAPP_ENABLED and not whatsapp_connected:
-                    log("WhatsApp desabilitado - apenas Telegram será usado")
+                    log("WhatsApp indisponível - apenas Telegram será usado")
                     whatsapp_success = False
                 
                 # Salva no histórico se pelo menos um dos envios foi bem-sucedido

@@ -22,7 +22,12 @@ import schedule
 import subprocess
 from collections import deque
 import sys
-from WhatsApp.wa_green_api import send_whatsapp_message
+from WhatsApp.wpp_connect import (
+    wpp_server_is_up,
+    wpp_ensure_connection,
+    wpp_send_message,
+    wpp_check_connection_state
+)
 import tempfile
 
 load_dotenv()
@@ -435,14 +440,18 @@ def send_telegram_message(products, driver, sent_products):
     whatsapp_connected = True
     if WHATSAPP_ENABLED:
         try:
-            from WhatsApp.wa_green_api import GreenAPI
-            whatsapp_api = GreenAPI(GREEN_API_INSTANCE_ID, GREEN_API_TOKEN)
-            whatsapp_connected = whatsapp_api.verify_and_notify_connection(ADMIN_CHAT_IDS)
-            
-            if whatsapp_connected:
-                print("✅ WhatsApp conectado e funcionando")
+            # Verifica se o servidor WPPConnect (PM2) está online
+            if not wpp_server_is_up():
+                print("⚠️ Servidor WPPConnect (PM2) está offline. Apenas Telegram será usado.")
+                whatsapp_connected = False
             else:
-                print("⚠️ WhatsApp desconectado - apenas Telegram será usado")
+                # Se online, garante a conexão (envia QR se necessário)
+                whatsapp_connected = wpp_ensure_connection(ADMIN_CHAT_IDS)
+                
+                if whatsapp_connected:
+                    print("✅ WhatsApp conectado e funcionando")
+                else:
+                    print("⚠️ WhatsApp desconectado - apenas Telegram será usado")
         except Exception as e:
             print(f"Erro ao verificar WhatsApp: {str(e)}")
             whatsapp_connected = False
@@ -462,60 +471,7 @@ def send_telegram_message(products, driver, sent_products):
                 continue
 
             # Monta mensagem no padrão solicitado, com uma linha em branco entre cada campo
-            message_lines = []
-            message_lines.append("🔵 Amazon")
-            message_lines.append("")
-            message_lines.append(f"🏷️ {product['nome']}")
-            message_lines.append("")
-
-            if product.get('desconto_percentual'):
-                message_lines.append(f"📉 Desconto de {product['desconto_percentual']}% OFF")
-                message_lines.append("")
-
-            if product.get('avaliacao'):
-                message_lines.append(f"⭐ {product['avaliacao']}")
-                message_lines.append("")
-
-            if product.get('valor_original'):
-                message_lines.append(f"💸 De: {product['valor_original']}")
-                message_lines.append("")
-
-            message_lines.append(f"💥 Por apenas: {product['valor_desconto']}")
-            message_lines.append("")
-
-            # Parcelamento
-            if product.get('parcelamento'):
-                try:
-                    message_lines.append("💳 Parcelamentos:")
-                    padrao1 = re.search(r'(\d+)x de R\$\s*([\d,]+)\s*(.*)', product['parcelamento'])
-                    padrao2 = re.search(r'(\d+)x\s*(.*)', product['parcelamento'])
-                    padrao3 = re.search(r'.*(\d+)x.*sem juros', product['parcelamento'])
-                    if padrao1:
-                        qtd_parcelas = padrao1.group(1)
-                        valor_parcela = f"R$ {padrao1.group(2)}"
-                        status_juros = padrao1.group(3).replace("com acréscimo", "com juros")
-                        message_lines.append(f"- Em até {qtd_parcelas}x {valor_parcela} {status_juros}".strip())
-                    elif padrao2:
-                        qtd_parcelas = padrao2.group(1)
-                        status_juros = padrao2.group(2).replace("com acréscimo", "com juros")
-                        message_lines.append(f"- Em até {qtd_parcelas}x {status_juros}".strip())
-                    elif padrao3:
-                        qtd_parcelas = padrao3.group(1)
-                        message_lines.append(f"- Em até {qtd_parcelas}x sem juros")
-                    else:
-                        message_lines.append("- Parcelamento disponível (ver detalhes)")
-                    message_lines.append("")
-                except Exception as e:
-                    print(f"Erro ao processar parcelamento: {str(e)}")
-                    message_lines.append("- Condições de parcelamento no site")
-                    message_lines.append("")
-
-            message_lines.append("🛒 Garanta agora:")
-            message_lines.append(f"🔗 {product['link']}")
-
-            # Junta tudo, removendo quebras de linha duplicadas
-            message = "\n".join(message_lines)
-            message = re.sub(r'\n{3,}', '\n\n', message).strip()
+            message = format_amazon_message(product)
 
             # Tenta enviar com imagem primeiro
             image_url = None
@@ -564,11 +520,12 @@ def send_telegram_message(products, driver, sent_products):
             # Envia para WhatsApp se habilitado e conectado
             if WHATSAPP_ENABLED and whatsapp_connected:
                 try:
-                    whatsapp_success = send_whatsapp_message(
+                    from scraper_ml import _load_whatsapp_destinations
+                    destinations = _load_whatsapp_destinations()
+                    whatsapp_success = wpp_send_message(
+                        destinations=destinations,
                         message=message,
-                        image_url=image_url,
-                        instance_id=GREEN_API_INSTANCE_ID,
-                        api_token=GREEN_API_TOKEN
+                        image_url=image_url
                     )
                     if whatsapp_success:
                         print(f"✅ Mensagem enviada para WhatsApp: {product['nome'][:50]}...")
@@ -578,7 +535,7 @@ def send_telegram_message(products, driver, sent_products):
                     print(f"❌ Erro ao enviar para WhatsApp: {str(e)}")
                     whatsapp_success = False
             elif WHATSAPP_ENABLED and not whatsapp_connected:
-                print("WhatsApp desabilitado - apenas Telegram será usado")
+                print("WhatsApp indisponível - apenas Telegram será usado")
                 whatsapp_success = False
             
             # Salva no histórico se pelo menos um dos envios foi bem-sucedido
