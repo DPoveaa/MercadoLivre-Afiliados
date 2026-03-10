@@ -19,8 +19,6 @@ import undetected_chromedriver as uc
 from webdriver_manager.chrome import ChromeDriverManager
 from Telegram.tl_enviar import send_telegram_message
 from WhatsApp.wpp_connect import (
-    wpp_server_is_up,
-    wpp_ensure_connection,
     wpp_send_message,
     wpp_check_connection_state
 )
@@ -728,25 +726,22 @@ def check_promotions():
     """Função principal que verifica e envia promoções"""
     log("Iniciando verificação de promoções da Kabum...")
     
-    # Verifica conexão do WhatsApp se habilitado (Servidor deve estar rodando via PM2)
-    whatsapp_connected = True
+    # Verifica estado do WhatsApp se habilitado
+    whatsapp_status = 'OFFLINE'
     if WHATSAPP_ENABLED:
         try:
-            # Verifica se o servidor WPPConnect (PM2) está online
-            if not wpp_server_is_up():
-                log("⚠️ Servidor WPPConnect (PM2) está offline. Apenas Telegram será usado.")
-                whatsapp_connected = False
+            whatsapp_status = wpp_check_connection_state()
+            if whatsapp_status == 'CONNECTED':
+                log("✅ WhatsApp conectado e pronto.")
+            elif whatsapp_status == 'DISCONNECTED':
+                log("⚠️ WhatsApp deslogado no servidor. Apenas Telegram será usado.")
+            elif whatsapp_status == 'OFFLINE':
+                log("❌ Servidor WPPConnect (PM2) está offline.")
             else:
-                # Se online, garante a conexão (envia QR se necessário)
-                whatsapp_connected = wpp_ensure_connection(ADMIN_CHAT_IDS)
-                
-                if whatsapp_connected:
-                    log("✅ WhatsApp conectado e funcionando")
-                else:
-                    log("⚠️ WhatsApp desconectado - apenas Telegram será usado")
+                log(f"❓ Estado do WhatsApp desconhecido: {whatsapp_status}")
         except Exception as e:
-            log(f"Erro ao verificar WhatsApp: {str(e)}")
-            whatsapp_connected = False
+            log(f"Erro ao verificar WhatsApp: {e}")
+            whatsapp_status = 'ERROR'
     
     driver = None
     try:
@@ -844,8 +839,8 @@ def check_promotions():
                 )
                 
                 # Envia para WhatsApp se habilitado e conectado
-                whatsapp_success = True
-                if WHATSAPP_ENABLED and whatsapp_connected:
+                whatsapp_success = False
+                if WHATSAPP_ENABLED and whatsapp_status == 'CONNECTED':
                     try:
                         from scraper_ml import _load_whatsapp_destinations
                         destinations = _load_whatsapp_destinations()
@@ -856,14 +851,8 @@ def check_promotions():
                         )
                         if whatsapp_success:
                             log("Mensagem enviada com sucesso para WhatsApp")
-                        else:
-                            log("Falha ao enviar para WhatsApp")
                     except Exception as e:
                         log(f"Erro ao enviar para WhatsApp: {str(e)}")
-                        whatsapp_success = False
-                elif WHATSAPP_ENABLED and not whatsapp_connected:
-                    log("WhatsApp indisponível - apenas Telegram será usado")
-                    whatsapp_success = False
                 
                 # Salva no histórico se pelo menos um dos envios foi bem-sucedido
                 if telegram_success or (WHATSAPP_ENABLED and whatsapp_success):

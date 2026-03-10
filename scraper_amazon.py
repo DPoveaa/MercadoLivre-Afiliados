@@ -23,8 +23,6 @@ import subprocess
 from collections import deque
 import sys
 from WhatsApp.wpp_connect import (
-    wpp_server_is_up,
-    wpp_ensure_connection,
     wpp_send_message,
     wpp_check_connection_state
 )
@@ -436,25 +434,22 @@ def send_telegram_message(products, driver, sent_products):
         print("Variáveis de ambiente do Telegram não configuradas!")
         return []
 
-    # Verifica conexão do WhatsApp se habilitado
-    whatsapp_connected = True
+    # Verifica estado do WhatsApp se habilitado
+    whatsapp_status = 'OFFLINE'
     if WHATSAPP_ENABLED:
         try:
-            # Verifica se o servidor WPPConnect (PM2) está online
-            if not wpp_server_is_up():
-                print("⚠️ Servidor WPPConnect (PM2) está offline. Apenas Telegram será usado.")
-                whatsapp_connected = False
+            whatsapp_status = wpp_check_connection_state()
+            if whatsapp_status == 'CONNECTED':
+                print("✅ WhatsApp conectado e pronto.")
+            elif whatsapp_status == 'DISCONNECTED':
+                print("⚠️ WhatsApp deslogado no servidor. Apenas Telegram será usado.")
+            elif whatsapp_status == 'OFFLINE':
+                print("❌ Servidor WPPConnect (PM2) está offline.")
             else:
-                # Se online, garante a conexão (envia QR se necessário)
-                whatsapp_connected = wpp_ensure_connection(ADMIN_CHAT_IDS)
-                
-                if whatsapp_connected:
-                    print("✅ WhatsApp conectado e funcionando")
-                else:
-                    print("⚠️ WhatsApp desconectado - apenas Telegram será usado")
+                print(f"❓ Estado do WhatsApp desconhecido: {whatsapp_status}")
         except Exception as e:
-            print(f"Erro ao verificar WhatsApp: {str(e)}")
-            whatsapp_connected = False
+            print(f"Erro ao verificar WhatsApp: {e}")
+            whatsapp_status = 'ERROR'
 
     new_sent_products = []
 
@@ -518,7 +513,7 @@ def send_telegram_message(products, driver, sent_products):
                     print(f"❌ Falha ao enviar mensagem para Telegram: {e}")
             
             # Envia para WhatsApp se habilitado e conectado
-            if WHATSAPP_ENABLED and whatsapp_connected:
+            if WHATSAPP_ENABLED and whatsapp_status == 'CONNECTED':
                 try:
                     from scraper_ml import _load_whatsapp_destinations
                     destinations = _load_whatsapp_destinations()
@@ -529,14 +524,8 @@ def send_telegram_message(products, driver, sent_products):
                     )
                     if whatsapp_success:
                         print(f"✅ Mensagem enviada para WhatsApp: {product['nome'][:50]}...")
-                    else:
-                        print(f"❌ Falha ao enviar para WhatsApp: {product['nome'][:50]}...")
                 except Exception as e:
                     print(f"❌ Erro ao enviar para WhatsApp: {str(e)}")
-                    whatsapp_success = False
-            elif WHATSAPP_ENABLED and not whatsapp_connected:
-                print("WhatsApp indisponível - apenas Telegram será usado")
-                whatsapp_success = False
             
             # Salva no histórico se pelo menos um dos envios foi bem-sucedido
             if telegram_success or (WHATSAPP_ENABLED and whatsapp_success):

@@ -3,6 +3,9 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
+const FormData = require('form-data');
+require('dotenv').config();
 
 const app = express();
 app.use(bodyParser.json());
@@ -12,13 +15,115 @@ app.get('/api-docs', (req, res) => {
 });
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 21465;
+const DEFAULT_SESSION = process.env.WPP_SESSION || 'default';
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const ADMIN_CHAT_IDS = process.env.ADMIN_CHAT_IDS ? process.env.ADMIN_CHAT_IDS.split(',').map(id => id.trim()) : [];
+
 let client = null;
 let currentQr = null;
 let status = 'DISCONNECTED';
 let starting = false;
+let lastQrSent = null;
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sendTelegramPhoto(caption, base64Data) {
+    if (!TELEGRAM_BOT_TOKEN || ADMIN_CHAT_IDS.length === 0) return;
+
+    const base64Image = base64Data.split(';base64,').pop();
+    const formData = new FormData();
+    const blob = new Blob([Buffer.from(base64Image, 'base64')], { type: 'image/png' });
+    
+    for (const chatId of ADMIN_CHAT_IDS) {
+        try {
+            const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`;
+            const body = new URLSearchParams();
+            body.append('chat_id', chatId);
+            body.append('caption', caption);
+            
+            // Note: Telegram API usually prefers multipart for actual files, 
+            // but for simplicity here we could also send as a file stream if needed.
+            // Using a simple buffer approach with axios:
+            const form = {
+                chat_id: chatId,
+                caption: caption,
+                photo: Buffer.from(base64Image, 'base64')
+            };
+
+            // Since we're in Node, we use form-data package or similar. 
+            // For now, let's use a more standard Node way with axios and form-data.
+        } catch (e) {
+            console.error(`[Telegram] Error sending to ${chatId}:`, e.message);
+        }
+    }
+}
+
+// Improved Telegram sender for Node
+async function notifyAdmins(message, base64Qr = null) {
+    if (!TELEGRAM_BOT_TOKEN || ADMIN_CHAT_IDS.length === 0) return;
+
+    for (const chatId of ADMIN_CHAT_IDS) {
+        try {
+            if (base64Qr) {
+                const form = new FormData();
+                const base64Image = base64Qr.split(';base64,').pop();
+                const buffer = Buffer.from(base64Image, 'base64');
+                
+                form.append('chat_id', chatId);
+                form.append('photo', buffer, { filename: 'qrcode.png' });
+                form.append('caption', message);
+                form.append('parse_mode', 'Markdown');
+
+                await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, form, {
+                    headers: form.getHeaders()
+                });
+            } else {
+                await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                    chat_id: chatId,
+                    text: message,
+                    parse_mode: 'Markdown'
+                });
+            }
+        } catch (e) {
+            console.error(`[Telegram] Error notifying ${chatId}:`, e.response?.data || e.message);
+        }
+    }
+}
+
+// Watchdog to ensure connection
+async function startWatchdog() {
+    console.log(`[Watchdog] Started for session: ${DEFAULT_SESSION}`);
+    let lastStatus = null;
+
+    while (true) {
+        try {
+            if (!client && !starting) {
+                console.log(`[Watchdog] Client not found, starting session...`);
+                await startWpp(DEFAULT_SESSION);
+            } else if (client && status === 'DISCONNECTED') {
+                console.log(`[Watchdog] Client disconnected, restarting...`);
+                client = null;
+                starting = false;
+                await startWpp(DEFAULT_SESSION);
+            }
+
+            // Notify on status change to CONNECTED
+            if (status !== lastStatus) {
+                if (status === 'CONNECTED') {
+                    await notifyAdmins("✅ *WhatsApp Conectado!*\nO servidor WPPConnect está pronto para enviar mensagens.");
+                } else if (status === 'DISCONNECTED' || status === 'BROWSERCLOSE') {
+                    await notifyAdmins("⚠️ *WhatsApp Desconectado!*\nO servidor tentará reconectar automaticamente.");
+                }
+                lastStatus = status;
+            }
+
+        } catch (e) {
+            console.error('[Watchdog] Error:', e);
+        }
+        await sleep(10000); // Check every 10 seconds
+    }
 }
 
 // Initialize session
@@ -45,24 +150,38 @@ async function startWpp(sessionName) {
         try {
             fs.mkdirSync(path.join(tokensRoot, sessionName), { recursive: true });
         } catch {}
+        
         client = await wppconnect.create({
             session: sessionName,
             userDataDir: path.join('./tokens', sessionName, 'userData'),
             catchQR: (base64Qr, asciiQR) => {
                 currentQr = base64Qr && base64Qr.startsWith('data:') ? base64Qr : `data:image/png;base64,${base64Qr}`;
                 status = 'QRCODE';
+                
+                // Auto send QR to Telegram if it's new
+                if (currentQr !== lastQrSent) {
+                    console.log('[WPP] New QR Code generated, sending to Telegram...');
+                    notifyAdmins("📲 *Novo QR Code do WhatsApp*\nEscaneie para conectar o servidor.", currentQr);
+                    lastQrSent = currentQr;
+                }
             },
             statusFind: (statusSession, session) => {
+                console.log(`[WPP] Status: ${statusSession}`);
                 if (statusSession === 'inChat' || statusSession === 'isLogged') {
                     status = 'CONNECTED';
                     currentQr = null;
+                    lastQrSent = null;
                 } else {
                     status = statusSession.toUpperCase();
-                    if (statusSession === 'autocloseCalled' || statusSession === 'browserClose') {
-                        try { client && client.close(); } catch {}
-                        client = null;
-                        currentQr = null;
-                        starting = false;
+                    if (statusSession === 'autocloseCalled' || statusSession === 'browserClose' || statusSession === 'qrReadSuccess') {
+                        if (statusSession === 'qrReadSuccess') {
+                            console.log('[WPP] QR Code read successfully!');
+                        } else {
+                            try { client && client.close(); } catch {}
+                            client = null;
+                            currentQr = null;
+                            starting = false;
+                        }
                     }
                 }
             },
@@ -71,11 +190,11 @@ async function startWpp(sessionName) {
             headless: true,
             devtools: false,
             useChrome: !!executablePath,
-            debug: true,
-            logQR: true,
+            debug: false,
+            logQR: false,
             autoClose: 0,
             waitForLogin: true,
-            updatesLog: true,
+            updatesLog: false,
             browserArgs: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -106,6 +225,7 @@ async function startWpp(sessionName) {
                 headless: true
             }
         });
+        
         try {
             await client.start();
         } catch (e) {
@@ -217,4 +337,5 @@ app.post('/api/:session/send-file', async (req, res) => {
 
 app.listen(PORT, () => {
     console.log(`WPPConnect Bridge Server http://localhost:${PORT}/`);
+    startWatchdog();
 });
