@@ -21,7 +21,8 @@ let status = 'DISCONNECTED';
 let starting = false;
 let qrCount = 0;
 let lastTelegramMsgId = null;
-let retryCount = 0; // Contador de retentativas de inicialização
+let retryCount = 0; 
+let lastQrBase64 = null; // Para evitar enviar o mesmo QR múltiplas vezes
 
 // Caminhos fixos e isolados
 const tokensPath = path.join(__dirname, 'tokens');
@@ -46,7 +47,11 @@ async function notifyTelegram(message, base64Qr = null) {
     for (const chatId of ADMIN_CHAT_IDS) {
         try {
             if (base64Qr) {
-                // Remove o QR anterior antes de enviar o novo
+                // Evita enviar o mesmo QR Code repetidamente
+                if (base64Qr === lastQrBase64) return;
+                lastQrBase64 = base64Qr;
+
+                // Remove o QR anterior antes de enviar o novo para manter o chat limpo
                 if (lastTelegramMsgId) {
                     await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteMessage`, {
                         chat_id: chatId,
@@ -70,10 +75,10 @@ async function notifyTelegram(message, base64Qr = null) {
                 
                 if (resp.data && resp.data.ok) {
                     lastTelegramMsgId = resp.data.result.message_id;
-                    log('DEBUG', `Novo lastTelegramMsgId: ${lastTelegramMsgId}`);
+                    log('DEBUG', `QR enviado. MsgID: ${lastTelegramMsgId}`);
                 }
             } else {
-                // Se for mensagem de conexão, TENTA EDITAR A LEGENDA DA FOTO ORIGINAL
+                // Se for mensagem de conexão, tenta editar a legenda da foto original do QR
                 let edited = false;
                 if (lastTelegramMsgId && (message.includes('Conectado') || message.includes('sucesso'))) {
                     try {
@@ -85,23 +90,21 @@ async function notifyTelegram(message, base64Qr = null) {
                         });
                         if (editResp.data && editResp.data.ok) {
                             edited = true;
-                            log('DEBUG', 'Legenda do QR Code editada com sucesso');
+                            log('DEBUG', 'Legenda do QR Code editada para sucesso');
+                            lastTelegramMsgId = null; // Limpa para não tentar editar de novo
                         }
                     } catch (e) {
-                        log('WARN', 'Não foi possível editar a legenda, enviando nova mensagem');
+                        log('WARN', `Falha ao editar legenda: ${e.message}`);
                     }
                 }
 
                 // Se não era para editar ou a edição falhou, envia mensagem normal
                 if (!edited) {
-                    const sendResp = await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                    await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
                         chat_id: chatId,
                         text: message,
                         parse_mode: 'Markdown'
                     });
-                    if (sendResp.data && sendResp.data.ok && !base64Qr) {
-                        // Não atualizamos lastTelegramMsgId aqui para não perder a referência da foto se for apenas um aviso
-                    }
                 }
             }
         } catch (e) {
@@ -115,7 +118,7 @@ async function initializeClient() {
     starting = true;
     status = 'STARTING';
     currentQr = null;
-    // Não resetamos qrCount aqui para ele acumular entre retentativas de browserClose
+    lastQrBase64 = null;
 
     log('INFO', `Iniciando sessão '${SESSION_NAME}' (Tentativa ${retryCount + 1})`);
 
@@ -136,7 +139,7 @@ async function initializeClient() {
             session: SESSION_NAME,
             folderNameToken: tokensPath,
             mkdirFolderToken: true,
-            tokenStore: 'file',
+            tokenStore: 'localStorage', // MUDANÇA CRÍTICA: localStorage é mais estável para handshake
             catchQR: (base64Qr) => {
                 currentQr = base64Qr.startsWith('data:') ? base64Qr : `data:image/png;base64,${base64Qr}`;
                 status = 'QRCODE';
@@ -151,7 +154,7 @@ async function initializeClient() {
                     const wasAlreadyConnected = (status === 'CONNECTED');
                     status = 'CONNECTED';
                     currentQr = null;
-                    retryCount = 0; // Reseta retentativas em caso de sucesso
+                    retryCount = 0; 
                     
                     if (!wasAlreadyConnected && qrCount > 0) {
                         notifyTelegram("✅ *WhatsApp Conectado com sucesso!*");
@@ -165,7 +168,6 @@ async function initializeClient() {
                     client = null;
                     starting = false;
 
-                    // Se fechou sozinho enquanto tentava iniciar, tenta de novo após um delay
                     if (wasStarting && retryCount < 5) {
                         retryCount++;
                         log('WARN', `Browser fechou durante inicialização. Retentando em 5s... (${retryCount}/5)`);
@@ -176,7 +178,7 @@ async function initializeClient() {
             headless: true,
             useChrome: !!executablePath,
             autoClose: 0,
-            waitForLogin: true,
+            waitForLogin: true, // Força espera pelo carregamento total
             disableWelcome: true,
             updatesLog: false,
             debug: false,
@@ -194,12 +196,14 @@ async function initializeClient() {
                     '--no-zygote',
                     '--window-size=1280,720',
                     `--user-data-dir=${userDataPath}`,
-                    '--disable-extensions'
+                    '--disable-extensions',
+                    '--disable-default-apps',
+                    '--mute-audio',
+                    '--no-default-browser-check'
                 ]
             }
         });
 
-        // Garantia extra pós-criação
         try {
             if (client && typeof client.disableAutoClose === 'function') {
                 await client.disableAutoClose();
