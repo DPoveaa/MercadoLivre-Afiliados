@@ -21,8 +21,13 @@ let status = 'DISCONNECTED';
 let starting = false;
 let lastQrSent = null;
 
-// Pasta fixa para persistência da sessão
+// Caminhos fixos e isolados para garantir que não use nada global
 const tokensPath = path.join(__dirname, 'tokens');
+const sessionPath = path.join(tokensPath, SESSION_NAME);
+const userDataPath = path.join(sessionPath, 'userData');
+
+// Garante que a pasta base existe
+if (!fs.existsSync(tokensPath)) fs.mkdirSync(tokensPath, { recursive: true });
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -65,7 +70,9 @@ async function startWpp() {
     status = 'STARTING';
     currentQr = null;
 
-    console.log(`[WPP] Starting session '${SESSION_NAME}' with persistence in ${tokensPath}`);
+    console.log(`[WPP] Starting session '${SESSION_NAME}'`);
+    console.log(`[WPP] Tokens: ${tokensPath}`);
+    console.log(`[WPP] UserData: ${userDataPath}`);
 
     try {
         const isLinux = process.platform === 'linux';
@@ -80,10 +87,16 @@ async function startWpp() {
             }
         }
 
+        console.log(`[WPP] Session persistence: ${tokensPath}`);
+        if (!fs.existsSync(tokensPath)) {
+            console.log(`[WPP] Persistence folder not found, a new QR will be generated.`);
+        }
+
         client = await wppconnect.create({
             session: SESSION_NAME,
-            folderNameToken: tokensPath, // Pasta raiz para os tokens
-            mkdirFolderToken: tokensPath, // Força a criação da pasta
+            folderNameToken: tokensPath,
+            mkdirFolderToken: true,
+            tokenStore: 'file',
             catchQR: (base64Qr) => {
                 currentQr = base64Qr.startsWith('data:') ? base64Qr : `data:image/png;base64,${base64Qr}`;
                 status = 'QRCODE';
@@ -95,7 +108,7 @@ async function startWpp() {
                 }
             },
             statusFind: (statusSession) => {
-                console.log(`[WPP] Status event: ${statusSession}`);
+                console.log(`[WPP] statusFind: ${statusSession}`);
                 if (statusSession === 'inChat' || statusSession === 'isLogged') {
                     status = 'CONNECTED';
                     currentQr = null;
@@ -110,23 +123,25 @@ async function startWpp() {
             },
             headless: true,
             useChrome: !!executablePath,
-            autoClose: 0,
+            autoClose: false,
             waitForLogin: true,
             disableWelcome: true,
             updatesLog: false,
             debug: false,
-            browserArgs: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--no-first-run',
-                '--no-zygote',
-                '--window-size=1280,720',
-                '--disable-blink-features=AutomationControlled'
-            ],
             puppeteerOptions: {
-                executablePath: executablePath
+                userDataDir: userDataPath, // ISOLAMENTO TOTAL AQUI
+                executablePath: executablePath,
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--window-size=1280,720',
+                    '--disable-blink-features=AutomationControlled',
+                    `--user-data-dir=${userDataPath}` // Força o diretório de dados do usuário via flag também
+                ]
             }
         });
 
@@ -148,23 +163,34 @@ async function startWpp() {
 
 async function startWatchdog() {
     console.log('[Watchdog] Monitoring connection...');
+    let startupTime = Date.now();
+
     while (true) {
         try {
             if (!client && !starting) {
                 await startWpp();
-            } else if (client && !starting) {
-                const isLoggedIn = await client.isLoggedIn().catch(() => false);
-                if (!isLoggedIn && status === 'CONNECTED') {
-                    console.log('[Watchdog] Session expired or disconnected, resetting...');
-                    status = 'DISCONNECTED';
-                    try { await client.close(); } catch (e) {}
-                    client = null;
+                startupTime = Date.now();
+            } else if (client && status === 'CONNECTED' && !starting) {
+                // Grace period: Espera 60s após conectar antes de começar a matar por isLoggedIn
+                if (Date.now() - startupTime > 60000) {
+                    const isLoggedIn = await client.isLoggedIn().catch(() => null);
+                    if (isLoggedIn === false) {
+                        console.log('[Watchdog] isLoggedIn returned false. Session expired, resetting...');
+                        status = 'DISCONNECTED';
+                        try { await client.close(); } catch (e) {}
+                        client = null;
+                    }
                 }
             }
         } catch (e) {
             console.error('[Watchdog] Error:', e.message);
+            if (e.message.includes('browser has disconnected')) {
+                client = null;
+                starting = false;
+                status = 'DISCONNECTED';
+            }
         }
-        await sleep(20000);
+        await sleep(30000);
     }
 }
 
