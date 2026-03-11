@@ -76,8 +76,8 @@ def wpp_send_message(destinations, message, image_url=None):
                 else:
                     payload.update({"phone": dest.split("@")[0]})
 
-                # Aumentado timeout para 120s para permitir inicialização preguiçosa (lazy init)
-                r = requests.post(url, headers=_wpp_headers(), json=payload, timeout=120)
+                # Aumentado timeout para 40s (o padrão era 20s)
+                r = requests.post(url, headers=_wpp_headers(), json=payload, timeout=40)
                 if r.status_code == 200:
                     success_count += 1
                     break # Sucesso, sai do loop de tentativas
