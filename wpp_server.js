@@ -109,7 +109,7 @@ async function startWpp() {
             },
             statusFind: (statusSession) => {
                 console.log(`[WPP] statusFind: ${statusSession}`);
-                if (statusSession === 'inChat' || statusSession === 'isLogged') {
+                if (statusSession === 'inChat' || statusSession === 'isLogged' || statusSession === 'qrReadSuccess') {
                     status = 'CONNECTED';
                     currentQr = null;
                     lastQrSent = null;

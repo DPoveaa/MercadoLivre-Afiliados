@@ -28,7 +28,7 @@ import time
 import requests
 import schedule
 import sys
-from WhatsApp.wpp_connect import (
+from whatsapp.wpp_connect import (
     wpp_send_message,
     wpp_check_connection_state
 )

@@ -18,7 +18,7 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 import undetected_chromedriver as uc
 from webdriver_manager.chrome import ChromeDriverManager
 from Telegram.tl_enviar import send_telegram_message
-from WhatsApp.wpp_connect import (
+from whatsapp.wpp_connect import (
     wpp_send_message,
     wpp_check_connection_state
 )
