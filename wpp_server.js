@@ -19,9 +19,10 @@ let client = null;
 let currentQr = null;
 let status = 'DISCONNECTED';
 let starting = false;
-let lastQrSent = null;
+let qrCount = 0;
+let lastTelegramMsgId = null;
 
-// Caminhos fixos e isolados para garantir que não use nada global
+// Caminhos fixos e isolados
 const tokensPath = path.join(__dirname, 'tokens');
 const sessionPath = path.join(tokensPath, SESSION_NAME);
 const userDataPath = path.join(sessionPath, 'userData');
@@ -33,12 +34,25 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function notifyAdmins(message, base64Qr = null) {
+function log(level, message) {
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] [${level}] ${message}`);
+}
+
+async function notifyTelegram(message, base64Qr = null) {
     if (!TELEGRAM_BOT_TOKEN || ADMIN_CHAT_IDS.length === 0) return;
 
     for (const chatId of ADMIN_CHAT_IDS) {
         try {
             if (base64Qr) {
+                // Se já enviamos um QR antes, tentamos apagar a mensagem anterior para não poluir
+                if (lastTelegramMsgId) {
+                    await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteMessage`, {
+                        chat_id: chatId,
+                        message_id: lastTelegramMsgId
+                    }).catch(() => {});
+                }
+
                 const form = new FormData();
                 const base64Image = base64Qr.split(';base64,').pop();
                 const buffer = Buffer.from(base64Image, 'base64');
@@ -48,31 +62,51 @@ async function notifyAdmins(message, base64Qr = null) {
                 form.append('caption', message);
                 form.append('parse_mode', 'Markdown');
 
-                await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, form, {
+                const resp = await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, form, {
                     headers: form.getHeaders()
                 });
+                
+                if (resp.data.ok) {
+                    lastTelegramMsgId = resp.data.result.message_id;
+                }
             } else {
-                await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-                    chat_id: chatId,
-                    text: message,
-                    parse_mode: 'Markdown'
-                });
+                // Se for uma mensagem de texto (ex: conectado), tentamos editar a legenda da foto do QR
+                if (lastTelegramMsgId && message.includes('Conectado')) {
+                    await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/editMessageCaption`, {
+                        chat_id: chatId,
+                        message_id: lastTelegramMsgId,
+                        caption: message,
+                        parse_mode: 'Markdown'
+                    }).catch(async () => {
+                        // Se falhar em editar (ex: mensagem muito antiga), envia nova
+                        await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                            chat_id: chatId,
+                            text: message,
+                            parse_mode: 'Markdown'
+                        });
+                    });
+                } else {
+                    await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                        chat_id: chatId,
+                        text: message,
+                        parse_mode: 'Markdown'
+                    });
+                }
             }
         } catch (e) {
-            console.error(`[Telegram] Error notifying ${chatId}:`, e.response?.data || e.message);
+            log('ERROR', `Erro Telegram: ${e.message}`);
         }
     }
 }
 
-async function startWpp() {
+async function initializeClient() {
     if (client || starting) return;
     starting = true;
     status = 'STARTING';
     currentQr = null;
+    qrCount = 0;
 
-    console.log(`[WPP] Starting session '${SESSION_NAME}'`);
-    console.log(`[WPP] Tokens: ${tokensPath}`);
-    console.log(`[WPP] UserData: ${userDataPath}`);
+    log('INFO', `Iniciando sessão '${SESSION_NAME}'`);
 
     try {
         const isLinux = process.platform === 'linux';
@@ -87,11 +121,6 @@ async function startWpp() {
             }
         }
 
-        console.log(`[WPP] Session persistence: ${tokensPath}`);
-        if (!fs.existsSync(tokensPath)) {
-            console.log(`[WPP] Persistence folder not found, a new QR will be generated.`);
-        }
-
         client = await wppconnect.create({
             session: SESSION_NAME,
             folderNameToken: tokensPath,
@@ -100,19 +129,23 @@ async function startWpp() {
             catchQR: (base64Qr) => {
                 currentQr = base64Qr.startsWith('data:') ? base64Qr : `data:image/png;base64,${base64Qr}`;
                 status = 'QRCODE';
+                qrCount++;
                 
-                if (currentQr !== lastQrSent) {
-                    console.log('[WPP] QR Code generated, notifying admins...');
-                    notifyAdmins("📲 *Novo QR Code do WhatsApp*\nEscaneie para conectar e manter a sessão.", currentQr);
-                    lastQrSent = currentQr;
-                }
+                log('INFO', `QR Code gerado (${qrCount}º)`);
+                notifyTelegram(`📲 *${qrCount}º QR Code do WhatsApp*\nEscaneie para conectar o servidor.`, currentQr);
             },
             statusFind: (statusSession) => {
-                console.log(`[WPP] statusFind: ${statusSession}`);
+                log('INFO', `Status: ${statusSession}`);
                 if (statusSession === 'inChat' || statusSession === 'isLogged' || statusSession === 'qrReadSuccess') {
+                    const wasAlreadyConnected = (status === 'CONNECTED');
                     status = 'CONNECTED';
                     currentQr = null;
-                    lastQrSent = null;
+                    
+                    // Só avisa se veio de um processo de leitura de QR (não avisa no startup silencioso)
+                    if (!wasAlreadyConnected && qrCount > 0) {
+                        notifyTelegram("✅ *WhatsApp Conectado com sucesso!*");
+                        qrCount = 0; // Reseta o contador após sucesso
+                    }
                 } else if (statusSession === 'notLogged' || statusSession === 'desconnectedMobile') {
                     status = 'DISCONNECTED';
                 } else if (statusSession === 'browserClose' || statusSession === 'autocloseCalled') {
@@ -129,7 +162,7 @@ async function startWpp() {
             updatesLog: false,
             debug: false,
             puppeteerOptions: {
-                userDataDir: userDataPath, // ISOLAMENTO TOTAL AQUI
+                userDataDir: userDataPath,
                 executablePath: executablePath,
                 args: [
                     '--no-sandbox',
@@ -140,12 +173,11 @@ async function startWpp() {
                     '--no-zygote',
                     '--window-size=1280,720',
                     '--disable-blink-features=AutomationControlled',
-                    `--user-data-dir=${userDataPath}` // Força o diretório de dados do usuário via flag também
+                    `--user-data-dir=${userDataPath}`
                 ]
             }
         });
 
-        // Tenta desativar autoClose explicitamente se a versão do pacote suportar
         try {
             if (client && typeof client.disableAutoClose === 'function') {
                 await client.disableAutoClose();
@@ -154,50 +186,16 @@ async function startWpp() {
 
         starting = false;
     } catch (error) {
-        console.error('[WPP] Fatal error starting:', error);
+        log('ERROR', `Erro fatal: ${error.message}`);
         status = 'DISCONNECTED';
         client = null;
         starting = false;
+        notifyTelegram(`❌ *Erro no Servidor WPP*\n${error.message}`);
     }
 }
 
-async function startWatchdog() {
-    console.log('[Watchdog] Monitoring connection...');
-    let startupTime = Date.now();
-
-    while (true) {
-        try {
-            if (!client && !starting) {
-                await startWpp();
-                startupTime = Date.now();
-            } else if (client && status === 'CONNECTED' && !starting) {
-                // Grace period: Espera 60s após conectar antes de começar a matar por isLoggedIn
-                if (Date.now() - startupTime > 60000) {
-                    const isLoggedIn = await client.isLoggedIn().catch(() => null);
-                    if (isLoggedIn === false) {
-                        console.log('[Watchdog] isLoggedIn returned false. Session expired, resetting...');
-                        status = 'DISCONNECTED';
-                        try { await client.close(); } catch (e) {}
-                        client = null;
-                    }
-                }
-            }
-        } catch (e) {
-            console.error('[Watchdog] Error:', e.message);
-            if (e.message.includes('browser has disconnected')) {
-                client = null;
-                starting = false;
-                status = 'DISCONNECTED';
-            }
-        }
-        await sleep(30000);
-    }
-}
-
-// Endpoints
 // Endpoints API REST
 
-// Status Completo
 app.get('/api/status', async (req, res) => {
     let extra = {};
     if (client && status === 'CONNECTED') {
@@ -221,7 +219,6 @@ app.get('/api/status', async (req, res) => {
     });
 });
 
-// Enviar Mensagem de Texto
 app.post('/api/send-message', async (req, res) => {
     if (status !== 'CONNECTED' || !client) {
         return res.status(400).json({ 
@@ -241,12 +238,11 @@ app.post('/api/send-message', async (req, res) => {
         const result = await client.sendText(dest, message);
         res.json({ status: 'success', result });
     } catch (e) {
-        console.error(`[API] Falha ao enviar mensagem para ${phone || groupId}`, e.message);
+        log('ERROR', `Falha envio msg: ${e.message}`);
         res.status(500).json({ status: 'error', message: e.toString() });
     }
 });
 
-// Enviar Arquivo/Imagem
 app.post('/api/send-file', async (req, res) => {
     if (status !== 'CONNECTED' || !client) {
         return res.status(400).json({ 
@@ -266,19 +262,17 @@ app.post('/api/send-file', async (req, res) => {
         const result = await client.sendFile(dest, url, fileName || 'arquivo', caption || '');
         res.json({ status: 'success', result });
     } catch (e) {
-        console.error(`[API] Falha ao enviar arquivo para ${phone || groupId}`, e.message);
+        log('ERROR', `Falha envio arquivo: ${e.message}`);
         res.status(500).json({ status: 'error', message: e.toString() });
     }
 });
 
-// Health Check Simples para os Scrapers
 app.get('/api/:session/check-connection-state', (req, res) => {
     res.json({ status: 'success', state: status });
 });
 
-// Inicialização do Servidor Express
+// Inicialização
 app.listen(PORT, '0.0.0.0', async () => {
-    log('INFO', `WPPConnect Bridge Server rodando na porta ${PORT}`);
-    // Inicia o WhatsApp imediatamente ao subir o servidor
+    log('INFO', `WPPConnect Bridge Server na porta ${PORT}`);
     await initializeClient();
 });
