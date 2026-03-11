@@ -21,6 +21,7 @@ let status = 'DISCONNECTED';
 let starting = false;
 let qrCount = 0;
 let lastTelegramMsgId = null;
+let retryCount = 0; // Contador de retentativas de inicialização
 
 // Caminhos fixos e isolados
 const tokensPath = path.join(__dirname, 'tokens');
@@ -63,7 +64,8 @@ async function notifyTelegram(message, base64Qr = null) {
                 form.append('parse_mode', 'Markdown');
 
                 const resp = await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, form, {
-                    headers: form.getHeaders()
+                    headers: form.getHeaders(),
+                    timeout: 30000
                 });
                 
                 if (resp.data.ok) {
@@ -71,26 +73,28 @@ async function notifyTelegram(message, base64Qr = null) {
                 }
             } else {
                 // Se for uma mensagem de texto (ex: conectado), tentamos editar a legenda da foto do QR
-                if (lastTelegramMsgId && message.includes('Conectado')) {
+                if (lastTelegramMsgId && (message.includes('Conectado') || message.includes('sucesso'))) {
                     await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/editMessageCaption`, {
                         chat_id: chatId,
                         message_id: lastTelegramMsgId,
                         caption: message,
                         parse_mode: 'Markdown'
                     }).catch(async () => {
-                        // Se falhar em editar (ex: mensagem muito antiga), envia nova
-                        await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                        // Se falhar em editar (ex: mensagem muito antiga ou apagada), envia nova
+                        const sendResp = await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
                             chat_id: chatId,
                             text: message,
                             parse_mode: 'Markdown'
                         });
+                        if (sendResp.data.ok) lastTelegramMsgId = sendResp.data.result.message_id;
                     });
                 } else {
-                    await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                    const sendResp = await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
                         chat_id: chatId,
                         text: message,
                         parse_mode: 'Markdown'
                     });
+                    if (sendResp.data.ok) lastTelegramMsgId = sendResp.data.result.message_id;
                 }
             }
         } catch (e) {
@@ -104,9 +108,9 @@ async function initializeClient() {
     starting = true;
     status = 'STARTING';
     currentQr = null;
-    qrCount = 0;
+    // Não resetamos qrCount aqui para ele acumular entre retentativas de browserClose
 
-    log('INFO', `Iniciando sessão '${SESSION_NAME}'`);
+    log('INFO', `Iniciando sessão '${SESSION_NAME}' (Tentativa ${retryCount + 1})`);
 
     try {
         const isLinux = process.platform === 'linux';
@@ -140,27 +144,37 @@ async function initializeClient() {
                     const wasAlreadyConnected = (status === 'CONNECTED');
                     status = 'CONNECTED';
                     currentQr = null;
+                    retryCount = 0; // Reseta retentativas em caso de sucesso
                     
-                    // Só avisa se veio de um processo de leitura de QR (não avisa no startup silencioso)
                     if (!wasAlreadyConnected && qrCount > 0) {
                         notifyTelegram("✅ *WhatsApp Conectado com sucesso!*");
-                        qrCount = 0; // Reseta o contador após sucesso
+                        qrCount = 0; 
                     }
                 } else if (statusSession === 'notLogged' || statusSession === 'desconnectedMobile') {
                     status = 'DISCONNECTED';
                 } else if (statusSession === 'browserClose' || statusSession === 'autocloseCalled') {
                     status = 'DISCONNECTED';
+                    const wasStarting = starting;
                     client = null;
                     starting = false;
+
+                    // Se fechou sozinho enquanto tentava iniciar, tenta de novo após um delay
+                    if (wasStarting && retryCount < 5) {
+                        retryCount++;
+                        log('WARN', `Browser fechou durante inicialização. Retentando em 5s... (${retryCount}/5)`);
+                        setTimeout(initializeClient, 5000);
+                    }
                 }
             },
             headless: true,
             useChrome: !!executablePath,
-            autoClose: false,
+            autoClose: 0, // 0 costuma desativar em algumas versões
             waitForLogin: true,
             disableWelcome: true,
             updatesLog: false,
             debug: false,
+            linkPreview: false,
+            disableAutoClose: true, // Flag extra para forçar desativação
             puppeteerOptions: {
                 userDataDir: userDataPath,
                 executablePath: executablePath,
@@ -173,24 +187,34 @@ async function initializeClient() {
                     '--no-zygote',
                     '--window-size=1280,720',
                     '--disable-blink-features=AutomationControlled',
-                    `--user-data-dir=${userDataPath}`
+                    `--user-data-dir=${userDataPath}`,
+                    '--disable-extensions'
                 ]
             }
         });
 
+        // Garantia extra pós-criação
         try {
             if (client && typeof client.disableAutoClose === 'function') {
                 await client.disableAutoClose();
+                log('DEBUG', 'AutoClose desativado via função');
             }
         } catch (e) {}
 
         starting = false;
     } catch (error) {
-        log('ERROR', `Erro fatal: ${error.message}`);
+        log('ERROR', `Erro fatal na inicialização: ${error ? error.message : 'Desconhecido'}`);
         status = 'DISCONNECTED';
         client = null;
         starting = false;
-        notifyTelegram(`❌ *Erro no Servidor WPP*\n${error.message}`);
+        
+        if (retryCount < 5) {
+            retryCount++;
+            log('INFO', `Falha na criação do cliente. Retentando em 10s... (${retryCount}/5)`);
+            setTimeout(initializeClient, 10000);
+        } else {
+            notifyTelegram(`❌ *Erro Crítico no Servidor WPP*\nNão foi possível iniciar após 5 tentativas.`);
+        }
     }
 }
 
