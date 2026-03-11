@@ -122,7 +122,6 @@ async function initializeClient() {
             session: SESSION_NAME,
             folderNameToken: tokensPath,
             mkdirFolderToken: true,
-            tokenStore: 'file', // Voltando para 'file' mas com limpeza manual se travar
             catchQR: (base64Qr) => {
                 currentQr = base64Qr.startsWith('data:') ? base64Qr : `data:image/png;base64,${base64Qr}`;
                 status = 'QRCODE';
@@ -160,15 +159,11 @@ async function initializeClient() {
             },
             headless: true,
             useChrome: !!executablePath,
-            autoClose: 0,
-            waitForLogin: true,
+            autoClose: 0, // 0 = desativado
             disableWelcome: true,
             updatesLog: false,
             debug: false,
-            linkPreview: false,
-            disableAutoClose: true,
             puppeteerOptions: {
-                userDataDir: userDataPath,
                 executablePath: executablePath,
                 args: [
                     '--no-sandbox',
@@ -178,13 +173,8 @@ async function initializeClient() {
                     '--no-first-run',
                     '--no-zygote',
                     '--window-size=1280,720',
-                    `--user-data-dir=${userDataPath}`, // Força a flag de diretório aqui
                     '--disable-extensions',
-                    '--disable-default-apps',
-                    '--mute-audio',
-                    '--no-default-browser-check',
-                    '--disable-web-security',
-                    '--disable-features=IsolateOrigins,site-per-process'
+                    '--mute-audio'
                 ]
             }
         });
