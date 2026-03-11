@@ -102,11 +102,34 @@ async function startWatchdog() {
             if (!client && !starting) {
                 console.log(`[Watchdog] Client not found, starting session...`);
                 await startWpp(DEFAULT_SESSION);
-            } else if (client && status === 'DISCONNECTED') {
-                console.log(`[Watchdog] Client disconnected, restarting...`);
-                client = null;
-                starting = false;
-                await startWpp(DEFAULT_SESSION);
+            } else if (client) {
+                // Double check status with the client itself
+                try {
+                    const isLoggedIn = await client.isLoggedIn();
+                    const connectionState = await client.getConnectionState();
+                    
+                    if (isLoggedIn && (connectionState === 'CONNECTED' || connectionState === 'PAIRING')) {
+                        status = 'CONNECTED';
+                    } else if (!isLoggedIn && status === 'CONNECTED') {
+                        // False positive detected
+                        console.log(`[Watchdog] False positive connection detected. isLoggedIn: ${isLoggedIn}, state: ${connectionState}`);
+                        status = 'DISCONNECTED';
+                    }
+                } catch (err) {
+                    console.log(`[Watchdog] Error checking client state: ${err.message}`);
+                    if (err.message.includes('browser has disconnected') || err.message.includes('Session closed')) {
+                        client = null;
+                        starting = false;
+                        status = 'DISCONNECTED';
+                    }
+                }
+
+                if (status === 'DISCONNECTED') {
+                    console.log(`[Watchdog] Client disconnected, restarting...`);
+                    client = null;
+                    starting = false;
+                    await startWpp(DEFAULT_SESSION);
+                }
             }
 
             // Notify on status change to CONNECTED
@@ -122,7 +145,7 @@ async function startWatchdog() {
         } catch (e) {
             console.error('[Watchdog] Error:', e);
         }
-        await sleep(10000); // Check every 10 seconds
+        await sleep(15000); // Check every 15 seconds
     }
 }
 
@@ -166,23 +189,27 @@ async function startWpp(sessionName) {
                 }
             },
             statusFind: (statusSession, session) => {
-                console.log(`[WPP] Status: ${statusSession}`);
+                console.log(`[WPP] statusFind event: ${statusSession}`);
+                
+                // Update internal status based on event
                 if (statusSession === 'inChat' || statusSession === 'isLogged') {
                     status = 'CONNECTED';
                     currentQr = null;
                     lastQrSent = null;
+                } else if (statusSession === 'notLogged' || statusSession === 'desconnectedMobile') {
+                    status = 'DISCONNECTED';
+                    currentQr = null;
                 } else {
                     status = statusSession.toUpperCase();
-                    if (statusSession === 'autocloseCalled' || statusSession === 'browserClose' || statusSession === 'qrReadSuccess') {
-                        if (statusSession === 'qrReadSuccess') {
-                            console.log('[WPP] QR Code read successfully!');
-                        } else {
-                            try { client && client.close(); } catch {}
-                            client = null;
-                            currentQr = null;
-                            starting = false;
-                        }
-                    }
+                }
+
+                // Handle fatal closures
+                if (statusSession === 'autocloseCalled' || statusSession === 'browserClose') {
+                    console.log(`[WPP] Critical closure: ${statusSession}`);
+                    try { client && client.close(); } catch {}
+                    client = null;
+                    currentQr = null;
+                    starting = false;
                 }
             },
             folderNameToken: tokensRoot,
