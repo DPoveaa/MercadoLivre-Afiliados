@@ -60,26 +60,35 @@ def wpp_send_message(destinations, message, image_url=None):
     
     success_count = 0
     for dest in destinations:
-        try:
-            payload = {"caption": message}
-            if image_url:
-                url = f"{WPP_BASE_URL}/api/{WPP_SESSION}/send-file"
-                payload.update({"url": image_url, "fileName": "image.jpg"})
-            else:
-                url = f"{WPP_BASE_URL}/api/{WPP_SESSION}/send-message"
-                payload.update({"message": message})
+        # Tenta até 2 vezes em caso de timeout
+        for attempt in range(2):
+            try:
+                payload = {"caption": message}
+                if image_url:
+                    url = f"{WPP_BASE_URL}/api/{WPP_SESSION}/send-file"
+                    payload.update({"url": image_url, "fileName": "image.jpg"})
+                else:
+                    url = f"{WPP_BASE_URL}/api/{WPP_SESSION}/send-message"
+                    payload.update({"message": message})
 
-            if dest.endswith("@g.us"):
-                payload.update({"groupId": dest})
-            else:
-                payload.update({"phone": dest.split("@")[0]})
+                if dest.endswith("@g.us"):
+                    payload.update({"groupId": dest})
+                else:
+                    payload.update({"phone": dest.split("@")[0]})
 
-            r = requests.post(url, headers=_wpp_headers(), json=payload, timeout=20)
-            if r.status_code == 200:
-                success_count += 1
-            else:
-                log(f"Falha ao enviar para {dest}: Status {r.status_code}")
-        except Exception as e:
-            log(f"Erro ao enviar para {dest}: {e}")
+                # Aumentado timeout para 40s (o padrão era 20s)
+                r = requests.post(url, headers=_wpp_headers(), json=payload, timeout=40)
+                if r.status_code == 200:
+                    success_count += 1
+                    break # Sucesso, sai do loop de tentativas
+                else:
+                    log(f"Falha ao enviar para {dest} (tentativa {attempt+1}): Status {r.status_code}")
+            except requests.exceptions.Timeout:
+                log(f"Timeout ao enviar para {dest} (tentativa {attempt+1})")
+                if attempt == 0:
+                    time.sleep(2) # Espera um pouco antes de tentar de novo
+            except Exception as e:
+                log(f"Erro ao enviar para {dest}: {e}")
+                break # Erro crítico, não tenta de novo para este destino
             
     return success_count > 0

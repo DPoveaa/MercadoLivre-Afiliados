@@ -195,6 +195,7 @@ async function startWpp(sessionName) {
             autoClose: 0,
             waitForLogin: true,
             updatesLog: false,
+            autoClose: false, // Desativa explicitamente o autoClose que apareceu no log (180s)
             browserArgs: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -206,7 +207,11 @@ async function startWpp(sessionName) {
                 '--remote-debugging-port=9222',
                 '--window-size=1280,720',
                 '--disable-features=VizDisplayCompositor',
-                '--disable-blink-features=AutomationControlled'
+                '--disable-blink-features=AutomationControlled',
+                '--disable-extensions',
+                '--disable-default-apps',
+                '--mute-audio',
+                '--no-default-browser-check'
             ],
             puppeteerOptions: {
                 executablePath: executablePath,
@@ -220,9 +225,14 @@ async function startWpp(sessionName) {
                     '--remote-debugging-port=9222',
                     '--window-size=1280,720',
                     '--disable-features=VizDisplayCompositor',
-                    '--disable-blink-features=AutomationControlled'
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-extensions',
+                    '--disable-default-apps',
+                    '--mute-audio',
+                    '--no-default-browser-check'
                 ],
-                headless: true
+                headless: true,
+                ignoreHTTPSErrors: true
             }
         });
         
