@@ -46,7 +46,7 @@ async function notifyTelegram(message, base64Qr = null) {
     for (const chatId of ADMIN_CHAT_IDS) {
         try {
             if (base64Qr) {
-                // Se já enviamos um QR antes, tentamos apagar a mensagem anterior para não poluir
+                // Remove o QR anterior antes de enviar o novo
                 if (lastTelegramMsgId) {
                     await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteMessage`, {
                         chat_id: chatId,
@@ -68,33 +68,40 @@ async function notifyTelegram(message, base64Qr = null) {
                     timeout: 30000
                 });
                 
-                if (resp.data.ok) {
+                if (resp.data && resp.data.ok) {
                     lastTelegramMsgId = resp.data.result.message_id;
+                    log('DEBUG', `Novo lastTelegramMsgId: ${lastTelegramMsgId}`);
                 }
             } else {
-                // Se for uma mensagem de texto (ex: conectado), tentamos editar a legenda da foto do QR
+                // Se for mensagem de conexão, TENTA EDITAR A LEGENDA DA FOTO ORIGINAL
+                let edited = false;
                 if (lastTelegramMsgId && (message.includes('Conectado') || message.includes('sucesso'))) {
-                    await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/editMessageCaption`, {
-                        chat_id: chatId,
-                        message_id: lastTelegramMsgId,
-                        caption: message,
-                        parse_mode: 'Markdown'
-                    }).catch(async () => {
-                        // Se falhar em editar (ex: mensagem muito antiga ou apagada), envia nova
-                        const sendResp = await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                    try {
+                        const editResp = await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/editMessageCaption`, {
                             chat_id: chatId,
-                            text: message,
+                            message_id: lastTelegramMsgId,
+                            caption: message,
                             parse_mode: 'Markdown'
                         });
-                        if (sendResp.data.ok) lastTelegramMsgId = sendResp.data.result.message_id;
-                    });
-                } else {
+                        if (editResp.data && editResp.data.ok) {
+                            edited = true;
+                            log('DEBUG', 'Legenda do QR Code editada com sucesso');
+                        }
+                    } catch (e) {
+                        log('WARN', 'Não foi possível editar a legenda, enviando nova mensagem');
+                    }
+                }
+
+                // Se não era para editar ou a edição falhou, envia mensagem normal
+                if (!edited) {
                     const sendResp = await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
                         chat_id: chatId,
                         text: message,
                         parse_mode: 'Markdown'
                     });
-                    if (sendResp.data.ok) lastTelegramMsgId = sendResp.data.result.message_id;
+                    if (sendResp.data && sendResp.data.ok && !base64Qr) {
+                        // Não atualizamos lastTelegramMsgId aqui para não perder a referência da foto se for apenas um aviso
+                    }
                 }
             }
         } catch (e) {
@@ -168,13 +175,13 @@ async function initializeClient() {
             },
             headless: true,
             useChrome: !!executablePath,
-            autoClose: 0, // 0 costuma desativar em algumas versões
+            autoClose: 0,
             waitForLogin: true,
             disableWelcome: true,
             updatesLog: false,
             debug: false,
             linkPreview: false,
-            disableAutoClose: true, // Flag extra para forçar desativação
+            disableAutoClose: true,
             puppeteerOptions: {
                 userDataDir: userDataPath,
                 executablePath: executablePath,
@@ -186,7 +193,6 @@ async function initializeClient() {
                     '--no-first-run',
                     '--no-zygote',
                     '--window-size=1280,720',
-                    '--disable-blink-features=AutomationControlled',
                     `--user-data-dir=${userDataPath}`,
                     '--disable-extensions'
                 ]
