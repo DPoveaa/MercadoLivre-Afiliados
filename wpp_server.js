@@ -47,11 +47,9 @@ async function notifyTelegram(message, base64Qr = null) {
     for (const chatId of ADMIN_CHAT_IDS) {
         try {
             if (base64Qr) {
-                // Evita enviar o mesmo QR Code repetidamente
                 if (base64Qr === lastQrBase64) return;
                 lastQrBase64 = base64Qr;
 
-                // Remove o QR anterior antes de enviar o novo para manter o chat limpo
                 if (lastTelegramMsgId) {
                     await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteMessage`, {
                         chat_id: chatId,
@@ -75,37 +73,22 @@ async function notifyTelegram(message, base64Qr = null) {
                 
                 if (resp.data && resp.data.ok) {
                     lastTelegramMsgId = resp.data.result.message_id;
-                    log('DEBUG', `QR enviado. MsgID: ${lastTelegramMsgId}`);
                 }
             } else {
-                // Se for mensagem de conexão, tenta editar a legenda da foto original do QR
-                let edited = false;
+                // Se conectou com sucesso, APAGA a foto do QR Code e manda apenas o texto de sucesso
                 if (lastTelegramMsgId && (message.includes('Conectado') || message.includes('sucesso'))) {
-                    try {
-                        const editResp = await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/editMessageCaption`, {
-                            chat_id: chatId,
-                            message_id: lastTelegramMsgId,
-                            caption: message,
-                            parse_mode: 'Markdown'
-                        });
-                        if (editResp.data && editResp.data.ok) {
-                            edited = true;
-                            log('DEBUG', 'Legenda do QR Code editada para sucesso');
-                            lastTelegramMsgId = null; // Limpa para não tentar editar de novo
-                        }
-                    } catch (e) {
-                        log('WARN', `Falha ao editar legenda: ${e.message}`);
-                    }
+                    await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteMessage`, {
+                        chat_id: chatId,
+                        message_id: lastTelegramMsgId
+                    }).catch(() => {});
+                    lastTelegramMsgId = null;
                 }
 
-                // Se não era para editar ou a edição falhou, envia mensagem normal
-                if (!edited) {
-                    await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-                        chat_id: chatId,
-                        text: message,
-                        parse_mode: 'Markdown'
-                    });
-                }
+                await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                    chat_id: chatId,
+                    text: message,
+                    parse_mode: 'Markdown'
+                });
             }
         } catch (e) {
             log('ERROR', `Erro Telegram: ${e.message}`);
@@ -120,7 +103,7 @@ async function initializeClient() {
     currentQr = null;
     lastQrBase64 = null;
 
-    log('INFO', `Iniciando sessão '${SESSION_NAME}' (Tentativa ${retryCount + 1})`);
+    log('INFO', `Iniciando sessão '${SESSION_NAME}'`);
 
     try {
         const isLinux = process.platform === 'linux';
@@ -139,7 +122,7 @@ async function initializeClient() {
             session: SESSION_NAME,
             folderNameToken: tokensPath,
             mkdirFolderToken: true,
-            tokenStore: 'localStorage', // MUDANÇA CRÍTICA: localStorage é mais estável para handshake
+            tokenStore: 'file', // Voltando para 'file' mas com limpeza manual se travar
             catchQR: (base64Qr) => {
                 currentQr = base64Qr.startsWith('data:') ? base64Qr : `data:image/png;base64,${base64Qr}`;
                 status = 'QRCODE';
@@ -170,7 +153,7 @@ async function initializeClient() {
 
                     if (wasStarting && retryCount < 5) {
                         retryCount++;
-                        log('WARN', `Browser fechou durante inicialização. Retentando em 5s... (${retryCount}/5)`);
+                        log('WARN', `Browser fechou. Retentando... (${retryCount}/5)`);
                         setTimeout(initializeClient, 5000);
                     }
                 }
@@ -178,7 +161,7 @@ async function initializeClient() {
             headless: true,
             useChrome: !!executablePath,
             autoClose: 0,
-            waitForLogin: true, // Força espera pelo carregamento total
+            waitForLogin: true,
             disableWelcome: true,
             updatesLog: false,
             debug: false,
@@ -195,11 +178,13 @@ async function initializeClient() {
                     '--no-first-run',
                     '--no-zygote',
                     '--window-size=1280,720',
-                    `--user-data-dir=${userDataPath}`,
+                    `--user-data-dir=${userDataPath}`, // Força a flag de diretório aqui
                     '--disable-extensions',
                     '--disable-default-apps',
                     '--mute-audio',
-                    '--no-default-browser-check'
+                    '--no-default-browser-check',
+                    '--disable-web-security',
+                    '--disable-features=IsolateOrigins,site-per-process'
                 ]
             }
         });
