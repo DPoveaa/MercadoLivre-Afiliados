@@ -158,6 +158,7 @@ async function startWpp(sessionName) {
                 currentQr = base64Qr && base64Qr.startsWith('data:') ? base64Qr : `data:image/png;base64,${base64Qr}`;
                 status = 'QRCODE';
                 
+                // Auto send QR to Telegram if it's new
                 if (currentQr !== lastQrSent) {
                     console.log('[WPP] New QR Code generated, sending to Telegram...');
                     notifyAdmins("📲 *Novo QR Code do WhatsApp*\nEscaneie para conectar o servidor.", currentQr);
@@ -194,7 +195,7 @@ async function startWpp(sessionName) {
             autoClose: 0,
             waitForLogin: true,
             updatesLog: false,
-            disableWelcome: true,
+            autoClose: false, // Desativa explicitamente o autoClose que apareceu no log (180s)
             browserArgs: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -234,16 +235,6 @@ async function startWpp(sessionName) {
                 ignoreHTTPSErrors: true
             }
         });
-
-        // Tenta desativar o autoClose via função interna se disponível
-        try {
-            if (client && typeof client.disableAutoClose === 'function') {
-                await client.disableAutoClose();
-                console.log('[WPP] disableAutoClose() called successfully');
-            }
-        } catch (err) {
-            console.error('[WPP] Error calling disableAutoClose():', err.message);
-        }
         
         try {
             await client.start();
