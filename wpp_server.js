@@ -195,37 +195,90 @@ async function startWatchdog() {
 }
 
 // Endpoints
-app.get('/api/:session/check-connection-state', (req, res) => {
-    res.json({ status: 'success', state: status });
+// Endpoints API REST
+
+// Status Completo
+app.get('/api/status', async (req, res) => {
+    let extra = {};
+    if (client && status === 'CONNECTED') {
+        try {
+            extra = {
+                isLoggedIn: await client.isLoggedIn(),
+                connectionState: await client.getConnectionState(),
+                battery: await client.getBatteryLevel().catch(() => 'N/A'),
+                isReady: true
+            };
+        } catch (e) {}
+    }
+    
+    res.json({
+        status: 'success',
+        session: SESSION_NAME,
+        internalStatus: status,
+        starting: starting,
+        hasQr: !!currentQr,
+        ...extra
+    });
 });
 
-app.get('/api-docs', (req, res) => res.send('WPP Server Active'));
-
-app.post('/api/:session/send-message', async (req, res) => {
-    if (status !== 'CONNECTED' || !client) return res.status(400).json({ status: 'error', message: 'Not connected' });
+// Enviar Mensagem de Texto
+app.post('/api/send-message', async (req, res) => {
+    if (status !== 'CONNECTED' || !client) {
+        return res.status(400).json({ 
+            status: 'error', 
+            message: status === 'QRCODE' ? 'Necessário ler QR Code' : 'WhatsApp não está conectado',
+            state: status 
+        });
+    }
+    
     const { phone, message, groupId } = req.body;
+    if (!message || (!phone && !groupId)) {
+        return res.status(400).json({ status: 'error', message: 'Parâmetros insuficientes' });
+    }
+
     try {
         const dest = groupId || (phone.includes('@') ? phone : `${phone}@c.us`);
         const result = await client.sendText(dest, message);
         res.json({ status: 'success', result });
     } catch (e) {
+        console.error(`[API] Falha ao enviar mensagem para ${phone || groupId}`, e.message);
         res.status(500).json({ status: 'error', message: e.toString() });
     }
 });
 
-app.post('/api/:session/send-file', async (req, res) => {
-    if (status !== 'CONNECTED' || !client) return res.status(400).json({ status: 'error', message: 'Not connected' });
+// Enviar Arquivo/Imagem
+app.post('/api/send-file', async (req, res) => {
+    if (status !== 'CONNECTED' || !client) {
+        return res.status(400).json({ 
+            status: 'error', 
+            message: status === 'QRCODE' ? 'Necessário ler QR Code' : 'WhatsApp não está conectado',
+            state: status 
+        });
+    }
+
     const { phone, groupId, url, caption, fileName } = req.body;
+    if (!url || (!phone && !groupId)) {
+        return res.status(400).json({ status: 'error', message: 'Parâmetros insuficientes' });
+    }
+
     try {
         const dest = groupId || (phone.includes('@') ? phone : `${phone}@c.us`);
-        const result = await client.sendFile(dest, url, fileName, caption);
+        const result = await client.sendFile(dest, url, fileName || 'arquivo', caption || '');
         res.json({ status: 'success', result });
     } catch (e) {
+        console.error(`[API] Falha ao enviar arquivo para ${phone || groupId}`, e.message);
         res.status(500).json({ status: 'error', message: e.toString() });
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    startWatchdog();
+// Health Check Simples para os Scrapers
+app.get('/api/:session/check-connection-state', (req, res) => {
+    res.json({ status: 'success', state: status });
+});
+
+// Inicialização do Servidor Express
+app.listen(PORT, '0.0.0.0', async () => {
+    log('INFO', `WPPConnect Bridge Server rodando na porta ${PORT}`);
+    // Inicia o WhatsApp imediatamente ao subir o servidor
+    await initializeClient();
 });
