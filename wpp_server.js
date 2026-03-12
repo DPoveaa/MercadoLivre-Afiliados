@@ -206,6 +206,7 @@ async function initializeClient() {
 // Endpoints API REST
 
 app.get('/api/status', async (req, res) => {
+    log('DEBUG', `Requisição de status recebida. Status interno: ${status}`);
     let extra = {};
     if (client && status === 'CONNECTED') {
         try {
@@ -221,6 +222,7 @@ app.get('/api/status', async (req, res) => {
     res.json({
         status: 'success',
         session: SESSION_NAME,
+        state: status, // Adicionado 'state' para compatibilidade direta
         internalStatus: status,
         starting: starting,
         hasQr: !!currentQr,

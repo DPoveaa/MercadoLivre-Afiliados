@@ -38,27 +38,36 @@ def wpp_check_connection_state():
       - 'OFFLINE': Servidor PM2 está desligado
       - 'ERROR': Outro erro de comunicação
     """
-    if not wpp_server_is_up():
-        return 'OFFLINE'
-        
+    # Se o servidor responder /api/status, ele está online
     try:
-        url = f"{WPP_BASE_URL}/api/{WPP_SESSION}/check-connection-state"
+        url = f"{WPP_BASE_URL}/api/status"
         r = requests.get(url, headers=_wpp_headers(), timeout=5)
         
-        if r.status_code != 200:
-            return 'ERROR'
+        if r.status_code == 200:
+            data = r.json()
+            # Tenta pegar 'state' (da nova rota status) ou 'internalStatus'
+            state = str(data.get("state") or data.get("internalStatus") or "").upper()
+            
+            # CONNECTED: Estado final de sucesso
+            # SYNCING: Estado de transição logo após ler o QR Code
+            # STARTING: Servidor está iniciando o navegador
+            if state in ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING"):
+                return 'CONNECTED'
+            return 'DISCONNECTED'
         
-        data = r.json()
-        state = str(data.get("state", "")).upper()
-        
-        # CONNECTED: Estado final de sucesso
-        # SYNCING: Estado de transição logo após ler o QR Code
-        # STARTING: Servidor está iniciando o navegador
-        if state in ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING"):
-            return 'CONNECTED'
-        return 'DISCONNECTED'
-    except Exception:
-        return 'ERROR'
+        # Fallback para a rota antiga se a nova der erro mas o servidor responder
+        url_old = f"{WPP_BASE_URL}/api/{WPP_SESSION}/check-connection-state"
+        r_old = requests.get(url_old, headers=_wpp_headers(), timeout=5)
+        if r_old.status_code == 200:
+            state = str(r_old.json().get("state", "")).upper()
+            if state in ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING"):
+                return 'CONNECTED'
+            return 'DISCONNECTED'
+
+        return 'OFFLINE'
+    except Exception as e:
+        # Se der erro de conexão (timeout, connection refused), está realmente offline
+        return 'OFFLINE'
 
 def wpp_send_message(destinations, message, image_url=None):
     """
