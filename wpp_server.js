@@ -286,7 +286,15 @@ app.get('/api/:session/check-connection-state', (req, res) => {
 });
 
 // Inicialização
-app.listen(PORT, '0.0.0.0', async () => {
-    log('INFO', `WPPConnect Bridge Server na porta ${PORT}`);
+const server = app.listen(PORT, '0.0.0.0', async () => {
+    log('INFO', `WPPConnect Bridge Server na porta ${PORT} (0.0.0.0)`);
     await initializeClient();
+});
+
+server.on('error', (e) => {
+    if (e.code === 'EADDRINUSE') {
+        log('ERROR', `Porta ${PORT} já está em uso. Verifique se o servidor já está rodando.`);
+    } else {
+        log('ERROR', `Erro no servidor Express: ${e.message}`);
+    }
 });

@@ -35,38 +35,36 @@ def wpp_check_connection_state():
     """
     url = f"{WPP_BASE_URL}/api/status"
     try:
-        log(f"Verificando conexão em: {url}")
-        r = requests.get(url, headers=_wpp_headers(), timeout=10)
-        
-        log(f"Resposta do servidor: Status {r.status_code}")
+        log(f"DEBUG: Tentando conectar em {url}...")
+        # Aumentamos o timeout e tentamos 127.0.0.1 caso localhost falhe
+        try:
+            r = requests.get(url, headers=_wpp_headers(), timeout=10)
+        except requests.exceptions.ConnectionError:
+            if "localhost" in url:
+                new_url = url.replace("localhost", "127.0.0.1")
+                log(f"DEBUG: Falha com localhost, tentando {new_url}...")
+                r = requests.get(new_url, headers=_wpp_headers(), timeout=10)
+            else:
+                raise
+
+        log(f"DEBUG: Resposta HTTP: {r.status_code}")
         if r.status_code == 200:
             data = r.json()
-            log(f"Dados recebidos: {data}")
+            log(f"DEBUG: JSON recebido: {data}")
             
-            # Pega o estado de qualquer um dos campos possíveis
             state = str(data.get("state") or data.get("internalStatus") or "").upper()
-            log(f"Estado identificado: {state}")
-            
-            # Lista expandida de estados que consideramos como "online/conectado" para o scraper
             valid_states = ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING", "MAIN", "NORMAL")
             
             if state in valid_states or data.get("isReady") is True:
                 return 'CONNECTED'
             
-            log(f"Estado '{state}' não é considerado conectado.")
+            log(f"DEBUG: Estado '{state}' não é conexão ativa.")
             return 'DISCONNECTED'
         
-        log(f"Servidor respondeu com erro: {r.status_code}")
         return 'OFFLINE'
 
-    except requests.exceptions.ConnectionError:
-        log(f"Erro de Conexão: Não foi possível alcançar {WPP_BASE_URL}. O servidor Node.js está rodando?")
-        return 'OFFLINE'
-    except requests.exceptions.Timeout:
-        log(f"Erro de Timeout: O servidor em {WPP_BASE_URL} demorou demais para responder.")
-        return 'OFFLINE'
     except Exception as e:
-        log(f"Erro inesperado na verificação de conexão: {str(e)}")
+        log(f"DEBUG ERROR: Falha total na conexão: {str(e)}")
         return 'OFFLINE'
 
 def wpp_send_message(destinations, message, image_url=None):
