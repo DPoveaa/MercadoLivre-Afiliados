@@ -39,8 +39,6 @@ from whatsapp.wpp_connect import (
     wpp_send_message,
     wpp_check_connection_state
 )
-import whatsapp
-log(f"DEBUG: Módulo WhatsApp carregado de: {whatsapp.__file__}")
 
 sys.stdout.reconfigure(line_buffering=True)
 
@@ -629,23 +627,15 @@ def check_promotions():
     log("Iniciando verificação de promoções...")
     
     # Verifica estado do WhatsApp se habilitado
-    whatsapp_status = 'OFFLINE'
     if WHATSAPP_ENABLED:
         try:
             whatsapp_status = wpp_check_connection_state()
-            log(f"Status da conexão WhatsApp: {whatsapp_status}")
-            
-            if whatsapp_status == 'OFFLINE':
-                log("❌ Servidor WPPConnect (PM2) está offline.")
-            elif whatsapp_status == 'DISCONNECTED':
-                log("⚠️ WhatsApp deslogado. Verifique o QR Code no Telegram.")
-            elif whatsapp_status == 'CONNECTED':
-                log("✅ WhatsApp conectado e pronto para envio.")
+            if whatsapp_status == 'CONNECTED':
+                log("✅ WhatsApp pronto para envio.")
             else:
-                log(f"❓ Status desconhecido do WhatsApp: {whatsapp_status}")
+                log("⚠️ WhatsApp deslogado. Verifique o QR Code no Telegram.")
         except Exception as e:
             log(f"Erro ao verificar WhatsApp: {e}")
-            whatsapp_status = 'ERROR'
     
     driver = None
     try:
