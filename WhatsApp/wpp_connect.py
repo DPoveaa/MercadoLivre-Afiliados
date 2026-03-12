@@ -17,11 +17,17 @@ def _wpp_headers():
 def wpp_server_is_up():
     """Verifica se o servidor WPPConnect (que deve rodar via PM2) está online"""
     try:
-        url = f"{WPP_BASE_URL}/api-docs"
+        # Tenta o endpoint de status que criamos no wpp_server.js
+        url = f"{WPP_BASE_URL}/api/status"
         r = requests.get(url, timeout=3)
         return r.status_code == 200
     except Exception:
-        return False
+        # Se falhar, tenta o root ou api-docs como fallback
+        try:
+            r = requests.get(f"{WPP_BASE_URL}/", timeout=2)
+            return r.status_code in (200, 404) # 404 também significa que o express está rodando
+        except:
+            return False
 
 def wpp_check_connection_state():
     """
@@ -45,7 +51,10 @@ def wpp_check_connection_state():
         data = r.json()
         state = str(data.get("state", "")).upper()
         
-        if state in ("CONNECTED", "INCHAT", "ISLOGGED"):
+        # CONNECTED: Estado final de sucesso
+        # SYNCING: Estado de transição logo após ler o QR Code
+        # STARTING: Servidor está iniciando o navegador
+        if state in ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING"):
             return 'CONNECTED'
         return 'DISCONNECTED'
     except Exception:
