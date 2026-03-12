@@ -434,17 +434,19 @@ def send_telegram_message(products, driver, sent_products):
         return []
 
     # Verifica estado do WhatsApp se habilitado
-    whatsapp_status = 'DISCONNECTED'
+    whatsapp_status = 'OFFLINE'
     if WHATSAPP_ENABLED:
         try:
             whatsapp_status = wpp_check_connection_state()
             if whatsapp_status == 'CONNECTED':
-                log("✅ WhatsApp pronto ou em transição (permitindo tentativa de envio).")
+                log("✅ WhatsApp conectado e pronto para envio.")
+            elif whatsapp_status == 'DISCONNECTED':
+                log("⚠️ WhatsApp deslogado. Verifique o QR Code.")
             else:
-                log("⚠️ WhatsApp deslogado ou inacessível.")
+                log("❌ Servidor WhatsApp está offline.")
         except Exception as e:
-            log(f"Erro ao verificar WhatsApp: {e}")
-            whatsapp_status = 'CONNECTED' # Fallback
+            log(f"Erro ao verificar conexão WhatsApp: {e}")
+            whatsapp_status = 'OFFLINE'
 
     new_sent_products = []
 
