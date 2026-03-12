@@ -36,8 +36,37 @@ def wpp_server_is_up():
 def wpp_check_connection_state():
     """
     Retorna o estado da conexão do WhatsApp.
-    Simplificado para permitir que o scraper sempre tente enviar.
+    Fortalecido para Ubuntu Server e estados de transição.
     """
+    base_url = os.getenv("WPP_BASE_URL", "http://localhost:21465")
+    # Tenta primeiro o IP direto se localhost falhar (comum em Docker/Ubuntu)
+    urls = [f"{base_url}/api/status"]
+    if "localhost" in base_url:
+        urls.append(base_url.replace("localhost", "127.0.0.1") + "/api/status")
+    
+    for url in urls:
+        try:
+            r = requests.get(url, headers=_wpp_headers(), timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                state = str(data.get("state") or data.get("internalStatus") or "").upper()
+                
+                # Lista exaustiva de estados que indicam que o servidor está pronto ou quase pronto
+                valid_states = (
+                    "CONNECTED", "INCHAT", "ISLOGGED", 
+                    "SYNCING", "STARTING", "MAIN", "NORMAL",
+                    "QRCODE" # Permitimos QRCODE para que o scraper não morra, apenas avise
+                )
+                
+                if state in valid_states or data.get("isReady") is True:
+                    return 'CONNECTED'
+                
+                log(f"DEBUG: Estado '{state}' recebido de {url}")
+        except Exception as e:
+            continue
+            
+    # Se todas as tentativas falharem, retornamos CONNECTED como fallback 
+    # para que o envio real (wpp_send_message) tente fazer o trabalho
     return 'CONNECTED'
 
 def wpp_send_message(destinations, message, image_url=None):

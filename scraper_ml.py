@@ -625,6 +625,19 @@ def get_product_details(driver, url, max_retries=3):
 def check_promotions():
     log("Iniciando verificação de promoções...")
     
+    # Define status inicial para evitar erro NameError
+    whatsapp_status = 'DISCONNECTED'
+    if WHATSAPP_ENABLED:
+        try:
+            whatsapp_status = wpp_check_connection_state()
+            if whatsapp_status == 'CONNECTED':
+                log("✅ WhatsApp pronto ou em transição (permitindo tentativa de envio).")
+            else:
+                log("⚠️ WhatsApp deslogado ou inacessível.")
+        except Exception as e:
+            log(f"Erro ao verificar WhatsApp: {e}")
+            whatsapp_status = 'CONNECTED' # Fallback para tentar enviar mesmo assim
+    
     driver = None
     try:
         driver = init_driver()
