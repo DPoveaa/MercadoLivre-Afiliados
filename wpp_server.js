@@ -99,9 +99,17 @@ async function initializeClient() {
     status = 'STARTING';
     currentQr = null;
 
-    log('INFO', `Iniciando sessão '${SESSION_NAME}' (Metodologia: Keep-Alive)`);
-
     try {
+        log('INFO', `Iniciando sessão '${SESSION_NAME}' (Metodologia: Keep-Alive)`);
+        
+        // Verifica se existem tokens salvos para debug
+        const tokenFile = path.join(tokensPath, `${SESSION_NAME}.data.json`);
+        if (fs.existsSync(tokenFile)) {
+            log('INFO', `Token de sessão encontrado: ${tokenFile}`);
+        } else {
+            log('WARN', `Nenhum token de sessão encontrado. Novo login será necessário.`);
+        }
+
         const isLinux = process.platform === 'linux';
         const isWin = process.platform === 'win32';
         let executablePath = undefined;
@@ -122,10 +130,8 @@ async function initializeClient() {
             }
         }
 
-        log('INFO', `Limpando diretórios para garantir início limpo...`);
-        if (fs.existsSync(userDataPath)) {
-            try { fs.rmSync(userDataPath, { recursive: true, force: true }); } catch (e) {}
-        }
+        // REMOVIDO: Limpeza automática que deletava a sessão a cada reinício
+        // Agora só limpamos se houver um erro crítico ou manual.
 
         client = await wppconnect.create({
             session: SESSION_NAME,
@@ -223,7 +229,10 @@ app.get('/api/status', async (req, res) => {
 });
 
 app.post('/api/send-message', async (req, res) => {
+    log('DEBUG', `Recebida solicitação de envio. Status atual: ${status}`);
+    
     if (status !== 'CONNECTED' || !client) {
+        log('WARN', `Tentativa de envio sem conexão. Status: ${status}`);
         return res.status(400).json({ 
             status: 'error', 
             message: status === 'QRCODE' ? 'Necessário ler QR Code' : 'WhatsApp não está conectado',
