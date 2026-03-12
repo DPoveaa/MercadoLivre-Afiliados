@@ -1,13 +1,8 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from datetime import datetime, timedelta
 import os
-import re
-import time
-import json
-import random
-import schedule
-import sys
-import urllib.parse
-from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -28,8 +23,6 @@ import subprocess
 from collections import deque
 
 sys.stdout.reconfigure(line_buffering=True)
-
-load_dotenv()
 
 # Verifica se está em modo de teste
 TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"

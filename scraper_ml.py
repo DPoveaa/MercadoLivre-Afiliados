@@ -25,10 +25,16 @@ import undetected_chromedriver as uc
 from webdriver_manager.chrome import ChromeDriverManager
 import subprocess
 import random
-import time
 import requests
 import schedule
 import sys
+import time
+
+def log(message):
+    """Função para logging com timestamp"""
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp}] {message}")
+
 from whatsapp.wpp_connect import (
     wpp_send_message,
     wpp_check_connection_state
@@ -37,8 +43,6 @@ import whatsapp
 log(f"DEBUG: Módulo WhatsApp carregado de: {whatsapp.__file__}")
 
 sys.stdout.reconfigure(line_buffering=True)
-
-load_dotenv()
 
 # Verifica se está em modo de teste
 TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
@@ -172,11 +176,6 @@ def save_promo_history(history: deque):
 sent_promotions = load_promo_history()
 
 
-
-def log(message):
-    """Função para logging com timestamp"""
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] {message}")
 
 def _load_whatsapp_destinations():
     test = os.getenv("TEST_MODE", "false").lower() == "true"
