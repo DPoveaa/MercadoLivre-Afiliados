@@ -20,9 +20,7 @@ let currentQr = null;
 let status = 'DISCONNECTED';
 let starting = false;
 let qrCount = 0;
-let lastTelegramMsgId = null;
-let retryCount = 0; 
-let lastQrBase64 = null; // Para evitar enviar o mesmo QR múltiplas vezes
+let lastTelegramMsgIds = {}; // Objeto para rastrear MsgID por ChatID
 
 // Caminhos fixos e isolados
 const tokensPath = path.join(__dirname, 'tokens');
@@ -47,13 +45,11 @@ async function notifyTelegram(message, base64Qr = null) {
     for (const chatId of ADMIN_CHAT_IDS) {
         try {
             if (base64Qr) {
-                if (base64Qr === lastQrBase64) return;
-                lastQrBase64 = base64Qr;
-
-                if (lastTelegramMsgId) {
+                // Se for um novo QR, deleta o anterior (se houver) e manda o novo
+                if (lastTelegramMsgIds[chatId]) {
                     await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteMessage`, {
                         chat_id: chatId,
-                        message_id: lastTelegramMsgId
+                        message_id: lastTelegramMsgIds[chatId]
                     }).catch(() => {});
                 }
 
@@ -72,16 +68,17 @@ async function notifyTelegram(message, base64Qr = null) {
                 });
                 
                 if (resp.data && resp.data.ok) {
-                    lastTelegramMsgId = resp.data.result.message_id;
+                    lastTelegramMsgIds[chatId] = resp.data.result.message_id;
                 }
             } else {
-                // Se conectou com sucesso, APAGA a foto do QR Code e manda apenas o texto de sucesso
-                if (lastTelegramMsgId && (message.includes('Conectado') || message.includes('sucesso'))) {
+                // Se for uma mensagem de texto (ex: sucesso de conexão)
+                // Remove o QR anterior deste chat específico se ele ainda existir
+                if (lastTelegramMsgIds[chatId]) {
                     await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteMessage`, {
                         chat_id: chatId,
-                        message_id: lastTelegramMsgId
+                        message_id: lastTelegramMsgIds[chatId]
                     }).catch(() => {});
-                    lastTelegramMsgId = null;
+                    delete lastTelegramMsgIds[chatId];
                 }
 
                 await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -91,7 +88,7 @@ async function notifyTelegram(message, base64Qr = null) {
                 });
             }
         } catch (e) {
-            log('ERROR', `Erro Telegram: ${e.message}`);
+            log('ERROR', `Erro Telegram (${chatId}): ${e.message}`);
         }
     }
 }
@@ -101,21 +98,33 @@ async function initializeClient() {
     starting = true;
     status = 'STARTING';
     currentQr = null;
-    lastQrBase64 = null;
 
-    log('INFO', `Iniciando sessão '${SESSION_NAME}'`);
+    log('INFO', `Iniciando sessão '${SESSION_NAME}' (Metodologia: Keep-Alive)`);
 
     try {
         const isLinux = process.platform === 'linux';
+        const isWin = process.platform === 'win32';
         let executablePath = undefined;
+
         if (isLinux) {
             const candidates = ['/usr/bin/google-chrome', '/usr/bin/chromium-browser', '/snap/bin/chromium', '/usr/bin/chromium'];
             for (const p of candidates) {
-                if (fs.existsSync(p)) {
-                    executablePath = p;
-                    break;
-                }
+                if (fs.existsSync(p)) { executablePath = p; break; }
             }
+        } else if (isWin) {
+            const candidates = [
+                'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+                'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+                path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe')
+            ];
+            for (const p of candidates) {
+                if (fs.existsSync(p)) { executablePath = p; break; }
+            }
+        }
+
+        log('INFO', `Limpando diretórios para garantir início limpo...`);
+        if (fs.existsSync(userDataPath)) {
+            try { fs.rmSync(userDataPath, { recursive: true, force: true }); } catch (e) {}
         }
 
         client = await wppconnect.create({
@@ -126,44 +135,41 @@ async function initializeClient() {
                 currentQr = base64Qr.startsWith('data:') ? base64Qr : `data:image/png;base64,${base64Qr}`;
                 status = 'QRCODE';
                 qrCount++;
-                
                 log('INFO', `QR Code gerado (${qrCount}º)`);
-                notifyTelegram(`📲 *${qrCount}º QR Code do WhatsApp*\nEscaneie para conectar o servidor.`, currentQr);
+                notifyTelegram(`📲 *${qrCount}º QR Code do WhatsApp*\nEscaneie agora para conectar o servidor.`, currentQr);
             },
             statusFind: (statusSession) => {
-                log('INFO', `Status: ${statusSession}`);
-                if (statusSession === 'inChat' || statusSession === 'isLogged' || statusSession === 'qrReadSuccess') {
-                    const wasAlreadyConnected = (status === 'CONNECTED');
-                    status = 'CONNECTED';
-                    currentQr = null;
-                    retryCount = 0; 
-                    
-                    if (!wasAlreadyConnected && qrCount > 0) {
-                        notifyTelegram("✅ *WhatsApp Conectado com sucesso!*");
-                        qrCount = 0; 
+                log('INFO', `Status da Sessão: ${statusSession}`);
+                
+                if (statusSession === 'isLogged' || statusSession === 'inChat' || statusSession === 'qrReadSuccess') {
+                    if (status !== 'CONNECTED') {
+                        status = 'CONNECTED';
+                        currentQr = null;
+                        notifyTelegram("✅ *WhatsApp Conectado!*\nO servidor está pronto para enviar mensagens.");
+                        log('INFO', 'WhatsApp conectado e pronto!');
                     }
-                } else if (statusSession === 'notLogged' || statusSession === 'desconnectedMobile') {
-                    status = 'DISCONNECTED';
-                } else if (statusSession === 'browserClose' || statusSession === 'autocloseCalled') {
-                    status = 'DISCONNECTED';
-                    const wasStarting = starting;
-                    client = null;
-                    starting = false;
+                }
 
-                    if (wasStarting && retryCount < 5) {
-                        retryCount++;
-                        log('WARN', `Browser fechou. Retentando... (${retryCount}/5)`);
-                        setTimeout(initializeClient, 5000);
-                    }
+                if (statusSession === 'desconnectedMobile' || statusSession === 'notLogged') {
+                    status = 'DISCONNECTED';
+                    log('WARN', 'WhatsApp desconectado no celular.');
+                }
+
+                if (statusSession === 'browserClose' || statusSession === 'autocloseCalled') {
+                    log('WARN', 'Navegador fechado. Tentando reiniciar em 10s...');
+                    client = null;
+                    status = 'DISCONNECTED';
+                    starting = false;
+                    setTimeout(initializeClient, 10000);
                 }
             },
             headless: true,
-            useChrome: !!executablePath,
-            autoClose: 0, // 0 = desativado
-            disableWelcome: true,
-            updatesLog: false,
-            debug: false,
+            useChrome: false,
+            autoClose: false,
+            waitForLogin: false,
+            logQR: true,
             puppeteerOptions: {
+                userDataDir: userDataPath,
                 executablePath: executablePath,
                 args: [
                     '--no-sandbox',
@@ -173,33 +179,21 @@ async function initializeClient() {
                     '--no-first-run',
                     '--no-zygote',
                     '--window-size=1280,720',
-                    '--disable-extensions',
-                    '--mute-audio'
+                    '--disable-extensions'
                 ]
             }
         });
 
-        try {
-            if (client && typeof client.disableAutoClose === 'function') {
-                await client.disableAutoClose();
-                log('DEBUG', 'AutoClose desativado via função');
-            }
-        } catch (e) {}
-
+        // Metodologia Keep-Alive: O cliente fica aberto permanentemente
+        log('INFO', 'Cliente WPP iniciado com sucesso (Keep-Alive ativo)');
         starting = false;
+
     } catch (error) {
-        log('ERROR', `Erro fatal na inicialização: ${error ? error.message : 'Desconhecido'}`);
+        log('ERROR', `Erro na inicialização: ${error.message}`);
         status = 'DISCONNECTED';
         client = null;
         starting = false;
-        
-        if (retryCount < 5) {
-            retryCount++;
-            log('INFO', `Falha na criação do cliente. Retentando em 10s... (${retryCount}/5)`);
-            setTimeout(initializeClient, 10000);
-        } else {
-            notifyTelegram(`❌ *Erro Crítico no Servidor WPP*\nNão foi possível iniciar após 5 tentativas.`);
-        }
+        setTimeout(initializeClient, 10000);
     }
 }
 
