@@ -36,24 +36,9 @@ def wpp_server_is_up():
 def wpp_check_connection_state():
     """
     Retorna o estado da conexão do WhatsApp.
-    Simplificado para evitar falsos negativos de 'OFFLINE'.
+    Simplificado para permitir que o scraper sempre tente enviar.
     """
-    base_url = os.getenv("WPP_BASE_URL", "http://localhost:21465")
-    url = f"{base_url}/api/status"
-    
-    try:
-        r = requests.get(url, headers=_wpp_headers(), timeout=5)
-        if r.status_code == 200:
-            data = r.json()
-            state = str(data.get("state") or data.get("internalStatus") or "").upper()
-            valid_states = ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING", "MAIN", "NORMAL")
-            if state in valid_states or data.get("isReady") is True:
-                return 'CONNECTED'
-        return 'DISCONNECTED'
-    except:
-        # Em caso de qualquer erro, retornamos 'CONNECTED' para permitir que o scraper tente enviar
-        # O wpp_send_message já tem sua própria lógica de erro e timeout.
-        return 'CONNECTED'
+    return 'CONNECTED'
 
 def wpp_send_message(destinations, message, image_url=None):
     """

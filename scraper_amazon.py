@@ -434,21 +434,8 @@ def send_telegram_message(products, driver, sent_products):
         return []
 
     # Verifica estado do WhatsApp se habilitado
-    whatsapp_status = 'OFFLINE'
     if WHATSAPP_ENABLED:
-        try:
-            whatsapp_status = wpp_check_connection_state()
-            if whatsapp_status == 'CONNECTED':
-                print("✅ WhatsApp conectado e pronto.")
-            elif whatsapp_status == 'DISCONNECTED':
-                print("⚠️ WhatsApp deslogado no servidor. Apenas Telegram será usado.")
-            elif whatsapp_status == 'OFFLINE':
-                print("❌ Servidor WPPConnect (PM2) está offline.")
-            else:
-                print(f"❓ Estado do WhatsApp desconhecido: {whatsapp_status}")
-        except Exception as e:
-            print(f"Erro ao verificar WhatsApp: {e}")
-            whatsapp_status = 'ERROR'
+        log("✅ WhatsApp habilitado.")
 
     new_sent_products = []
 

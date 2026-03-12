@@ -623,19 +623,7 @@ def get_product_details(driver, url, max_retries=3):
     return None, None, None
 
 def check_promotions():
-    # Verifica status do WhatsApp antes de começar
     log("Iniciando verificação de promoções...")
-    
-    # Verifica estado do WhatsApp se habilitado
-    if WHATSAPP_ENABLED:
-        try:
-            whatsapp_status = wpp_check_connection_state()
-            if whatsapp_status == 'CONNECTED':
-                log("✅ WhatsApp pronto para envio.")
-            else:
-                log("⚠️ WhatsApp deslogado. Verifique o QR Code no Telegram.")
-        except Exception as e:
-            log(f"Erro ao verificar WhatsApp: {e}")
     
     driver = None
     try:

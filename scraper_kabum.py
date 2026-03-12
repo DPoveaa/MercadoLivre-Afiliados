@@ -720,21 +720,8 @@ def check_promotions():
     log("Iniciando verificação de promoções da Kabum...")
     
     # Verifica estado do WhatsApp se habilitado
-    whatsapp_status = 'OFFLINE'
     if WHATSAPP_ENABLED:
-        try:
-            whatsapp_status = wpp_check_connection_state()
-            if whatsapp_status == 'CONNECTED':
-                log("✅ WhatsApp conectado e pronto.")
-            elif whatsapp_status == 'DISCONNECTED':
-                log("⚠️ WhatsApp deslogado no servidor. Apenas Telegram será usado.")
-            elif whatsapp_status == 'OFFLINE':
-                log("❌ Servidor WPPConnect (PM2) está offline.")
-            else:
-                log(f"❓ Estado do WhatsApp desconhecido: {whatsapp_status}")
-        except Exception as e:
-            log(f"Erro ao verificar WhatsApp: {e}")
-            whatsapp_status = 'ERROR'
+        log("✅ WhatsApp habilitado.")
     
     driver = None
     try:
