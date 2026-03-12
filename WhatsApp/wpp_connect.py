@@ -38,42 +38,48 @@ def wpp_check_connection_state():
     Retorna o estado da conexão do WhatsApp.
     Tenta resolver o endereço de forma robusta para Ubuntu Server.
     """
-    base_url = os.getenv("WPP_BASE_URL", "http://localhost:21465")
+    # Recarrega as variáveis do .env a cada chamada para garantir que não estamos usando cache
+    load_dotenv()
     
-    # Lista de endereços para tentar (priorizando localhost e 127.0.0.1)
+    base_url = os.getenv("WPP_BASE_URL", "http://127.0.0.1:21465")
+    
+    # Lista de endereços para tentar (priorizando 127.0.0.1 que é mais estável no Ubuntu)
     urls_to_try = [f"{base_url}/api/status"]
     if "localhost" in base_url:
         urls_to_try.append(base_url.replace("localhost", "127.0.0.1") + "/api/status")
+    elif "127.0.0.1" in base_url:
+        urls_to_try.append(base_url.replace("127.0.0.1", "localhost") + "/api/status")
+    
+    # Se nenhuma das anteriores funcionar, tenta o IP interno padrão do Docker/Ubuntu
+    urls_to_try.append("http://127.0.0.1:21465/api/status")
     
     last_error = ""
     for url in urls_to_try:
         try:
-            log(f"DEBUG: Tentando checar conexão em {url}...")
-            # Timeout curto para falhar rápido se não houver resposta e tentar o próximo
+            # USANDO PRINT DIRETO para garantir que apareça no terminal mesmo se o log() falhar
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            print(f"[{timestamp}] [WPP-DEBUG] Verificando conexão em: {url}")
+            
             r = requests.get(url, headers=_wpp_headers(), timeout=5)
             
             if r.status_code == 200:
                 data = r.json()
                 state = str(data.get("state") or data.get("internalStatus") or "").upper()
+                print(f"[{timestamp}] [WPP-DEBUG] URL {url} respondeu 200. Estado: {state}")
                 
-                # Estados considerados como conexão ativa ou pronta
                 valid_states = ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING", "MAIN", "NORMAL")
                 if state in valid_states or data.get("isReady") is True:
                     return 'CONNECTED'
                 
-                log(f"DEBUG: Estado '{state}' recebido de {url}, mas não é considerado pronto.")
                 return 'DISCONNECTED'
             else:
-                log(f"DEBUG: URL {url} respondeu com status {r.status_code}")
+                print(f"[{timestamp}] [WPP-DEBUG] URL {url} respondeu status {r.status_code}")
                 
-        except requests.exceptions.ConnectionError as e:
-            last_error = f"Erro de conexão em {url}: {str(e)}"
-            continue
         except Exception as e:
-            last_error = f"Erro inesperado em {url}: {str(e)}"
+            last_error = str(e)
             continue
             
-    log(f"DEBUG: Todas as tentativas de checagem de conexão falharam. Último erro: {last_error}")
+    print(f"[{timestamp}] [WPP-DEBUG] Todas as tentativas falharam. Erro final: {last_error}")
     return 'OFFLINE'
 
 def wpp_send_message(destinations, message, image_url=None):

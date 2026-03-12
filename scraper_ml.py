@@ -54,7 +54,9 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID_TESTE") if TEST_MODE else os.gete
 
 # WhatsApp via WPPConnect
 WHATSAPP_ENABLED = os.getenv("WHATSAPP_ENABLED", "false").lower() == "true"
+log(f"DEBUG: WHATSAPP_ENABLED está como {WHATSAPP_ENABLED}")
 WPP_BASE_URL = os.getenv("WPP_BASE_URL", "http://localhost:21465")
+log(f"DEBUG: WPP_BASE_URL está como {WPP_BASE_URL}")
 WPP_SESSION = os.getenv("WPP_SESSION", "default")
 WPP_TOKEN = os.getenv("WPP_TOKEN", "")
 WPP_SECRET_KEY = os.getenv("WPP_SECRET_KEY", "THISISMYSECURETOKEN")
