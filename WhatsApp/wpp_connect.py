@@ -1,6 +1,10 @@
 import os
 import time
 import requests
+from dotenv import load_dotenv
+
+# Garante que as variáveis do .env estão disponíveis para este módulo
+load_dotenv()
 
 # Configurações carregadas do ambiente
 WPP_BASE_URL = os.getenv("WPP_BASE_URL", "http://localhost:21465")
@@ -31,41 +35,47 @@ def wpp_server_is_up():
 
 def wpp_check_connection_state():
     """
-    Retorna o estado da conexão do WhatsApp com logs detalhados para debug.
+    Retorna o estado da conexão do WhatsApp.
     """
-    url = f"{WPP_BASE_URL}/api/status"
+    # Recarrega as configurações para ter certeza de que estamos usando o valor atual do .env
+    base_url = os.getenv("WPP_BASE_URL", "http://localhost:21465")
+    url = f"{base_url}/api/status"
+    
     try:
-        log(f"DEBUG: Tentando conectar em {url}...")
-        # Aumentamos o timeout e tentamos 127.0.0.1 caso localhost falhe
-        try:
-            r = requests.get(url, headers=_wpp_headers(), timeout=10)
-        except requests.exceptions.ConnectionError:
-            if "localhost" in url:
-                new_url = url.replace("localhost", "127.0.0.1")
-                log(f"DEBUG: Falha com localhost, tentando {new_url}...")
-                r = requests.get(new_url, headers=_wpp_headers(), timeout=10)
-            else:
-                raise
-
-        log(f"DEBUG: Resposta HTTP: {r.status_code}")
-        if r.status_code == 200:
-            data = r.json()
-            log(f"DEBUG: JSON recebido: {data}")
-            
-            state = str(data.get("state") or data.get("internalStatus") or "").upper()
-            valid_states = ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING", "MAIN", "NORMAL")
-            
-            if state in valid_states or data.get("isReady") is True:
-                return 'CONNECTED'
-            
-            log(f"DEBUG: Estado '{state}' não é conexão ativa.")
-            return 'DISCONNECTED'
-        
-        return 'OFFLINE'
-
+        # Tenta com localhost
+        log(f"DEBUG: Tentando conexão em {url}...")
+        r = requests.get(url, headers=_wpp_headers(), timeout=5)
+    except requests.exceptions.ConnectionError:
+        # Se falhar localhost, tenta 127.0.0.1 (comum em Linux se localhost não estiver resolvendo)
+        if "localhost" in url:
+            new_url = url.replace("localhost", "127.0.0.1")
+            log(f"DEBUG: localhost falhou, tentando {new_url}...")
+            try:
+                r = requests.get(new_url, headers=_wpp_headers(), timeout=5)
+            except Exception as e:
+                log(f"DEBUG: Falha em 127.0.0.1 também: {str(e)}")
+                return 'OFFLINE'
+        else:
+            return 'OFFLINE'
     except Exception as e:
-        log(f"DEBUG ERROR: Falha total na conexão: {str(e)}")
+        log(f"DEBUG: Erro de conexão inesperado: {str(e)}")
         return 'OFFLINE'
+
+    if r.status_code == 200:
+        data = r.json()
+        log(f"DEBUG: JSON Recebido: {data}")
+        state = str(data.get("state") or data.get("internalStatus") or "").upper()
+        
+        # Estados que consideramos como OK para o scraper prosseguir
+        valid_states = ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING", "MAIN", "NORMAL")
+        if state in valid_states or data.get("isReady") is True:
+            return 'CONNECTED'
+        
+        log(f"DEBUG: Estado '{state}' não é conexão ativa.")
+        return 'DISCONNECTED'
+    
+    log(f"DEBUG: Servidor respondeu com status {r.status_code}")
+    return 'OFFLINE'
 
 def wpp_send_message(destinations, message, image_url=None):
     """

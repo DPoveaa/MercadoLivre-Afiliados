@@ -1,9 +1,10 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from datetime import datetime, timedelta
 import os
 import re
 import shlex
-from tempfile import mkdtemp
-from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -32,6 +33,8 @@ from whatsapp.wpp_connect import (
     wpp_send_message,
     wpp_check_connection_state
 )
+import whatsapp
+log(f"DEBUG: Módulo WhatsApp carregado de: {whatsapp.__file__}")
 
 sys.stdout.reconfigure(line_buffering=True)
 
