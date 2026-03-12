@@ -31,42 +31,42 @@ def wpp_server_is_up():
 
 def wpp_check_connection_state():
     """
-    Retorna o estado da conexão do WhatsApp.
-    Retorna:
-      - 'CONNECTED': Tudo OK
-      - 'DISCONNECTED': Servidor online mas WhatsApp deslogado
-      - 'OFFLINE': Servidor PM2 está desligado
-      - 'ERROR': Outro erro de comunicação
+    Retorna o estado da conexão do WhatsApp com logs detalhados para debug.
     """
-    # Se o servidor responder /api/status, ele está online
+    url = f"{WPP_BASE_URL}/api/status"
     try:
-        url = f"{WPP_BASE_URL}/api/status"
-        r = requests.get(url, headers=_wpp_headers(), timeout=5)
+        log(f"Verificando conexão em: {url}")
+        r = requests.get(url, headers=_wpp_headers(), timeout=10)
         
+        log(f"Resposta do servidor: Status {r.status_code}")
         if r.status_code == 200:
             data = r.json()
-            # Tenta pegar 'state' (da nova rota status) ou 'internalStatus'
-            state = str(data.get("state") or data.get("internalStatus") or "").upper()
+            log(f"Dados recebidos: {data}")
             
-            # CONNECTED: Estado final de sucesso
-            # SYNCING: Estado de transição logo após ler o QR Code
-            # STARTING: Servidor está iniciando o navegador
-            if state in ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING"):
+            # Pega o estado de qualquer um dos campos possíveis
+            state = str(data.get("state") or data.get("internalStatus") or "").upper()
+            log(f"Estado identificado: {state}")
+            
+            # Lista expandida de estados que consideramos como "online/conectado" para o scraper
+            valid_states = ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING", "MAIN", "NORMAL")
+            
+            if state in valid_states or data.get("isReady") is True:
                 return 'CONNECTED'
+            
+            log(f"Estado '{state}' não é considerado conectado.")
             return 'DISCONNECTED'
         
-        # Fallback para a rota antiga se a nova der erro mas o servidor responder
-        url_old = f"{WPP_BASE_URL}/api/{WPP_SESSION}/check-connection-state"
-        r_old = requests.get(url_old, headers=_wpp_headers(), timeout=5)
-        if r_old.status_code == 200:
-            state = str(r_old.json().get("state", "")).upper()
-            if state in ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING"):
-                return 'CONNECTED'
-            return 'DISCONNECTED'
+        log(f"Servidor respondeu com erro: {r.status_code}")
+        return 'OFFLINE'
 
+    except requests.exceptions.ConnectionError:
+        log(f"Erro de Conexão: Não foi possível alcançar {WPP_BASE_URL}. O servidor Node.js está rodando?")
+        return 'OFFLINE'
+    except requests.exceptions.Timeout:
+        log(f"Erro de Timeout: O servidor em {WPP_BASE_URL} demorou demais para responder.")
         return 'OFFLINE'
     except Exception as e:
-        # Se der erro de conexão (timeout, connection refused), está realmente offline
+        log(f"Erro inesperado na verificação de conexão: {str(e)}")
         return 'OFFLINE'
 
 def wpp_send_message(destinations, message, image_url=None):

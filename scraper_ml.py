@@ -623,6 +623,7 @@ def get_product_details(driver, url, max_retries=3):
     return None, None, None
 
 def check_promotions():
+    # Verifica status do WhatsApp antes de começar
     log("Iniciando verificação de promoções...")
     
     # Verifica estado do WhatsApp se habilitado
@@ -630,14 +631,16 @@ def check_promotions():
     if WHATSAPP_ENABLED:
         try:
             whatsapp_status = wpp_check_connection_state()
-            if whatsapp_status == 'CONNECTED':
-                log("✅ WhatsApp conectado e pronto.")
-            elif whatsapp_status == 'DISCONNECTED':
-                log("⚠️ WhatsApp deslogado no servidor. Apenas Telegram será usado.")
-            elif whatsapp_status == 'OFFLINE':
+            log(f"Status da conexão WhatsApp: {whatsapp_status}")
+            
+            if whatsapp_status == 'OFFLINE':
                 log("❌ Servidor WPPConnect (PM2) está offline.")
+            elif whatsapp_status == 'DISCONNECTED':
+                log("⚠️ WhatsApp deslogado. Verifique o QR Code no Telegram.")
+            elif whatsapp_status == 'CONNECTED':
+                log("✅ WhatsApp conectado e pronto para envio.")
             else:
-                log(f"❓ Estado do WhatsApp desconhecido: {whatsapp_status}")
+                log(f"❓ Status desconhecido do WhatsApp: {whatsapp_status}")
         except Exception as e:
             log(f"Erro ao verificar WhatsApp: {e}")
             whatsapp_status = 'ERROR'
