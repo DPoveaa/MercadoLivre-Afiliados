@@ -433,20 +433,17 @@ def send_telegram_message(products, driver, sent_products):
         print("Variáveis de ambiente do Telegram não configuradas!")
         return []
 
-    # Verifica estado do WhatsApp se habilitado
+    # Verifica estado do WhatsApp apenas para log, sem travar o scraper
     whatsapp_status = 'OFFLINE'
     if WHATSAPP_ENABLED:
         try:
             whatsapp_status = wpp_check_connection_state()
             if whatsapp_status == 'CONNECTED':
-                log("✅ WhatsApp conectado e pronto para envio.")
-            elif whatsapp_status == 'DISCONNECTED':
-                log("⚠️ WhatsApp deslogado. Verifique o QR Code.")
+                log("✅ WhatsApp pronto.")
             else:
-                log("❌ Servidor WhatsApp está offline.")
-        except Exception as e:
-            log(f"Erro ao verificar conexão WhatsApp: {e}")
-            whatsapp_status = 'OFFLINE'
+                log(f"⚠️ WhatsApp status: {whatsapp_status}. Tentando enviar mesmo assim.")
+        except:
+            log("⚠️ Falha ao verificar status do WhatsApp. Prosseguindo.")
 
     new_sent_products = []
 
@@ -509,8 +506,8 @@ def send_telegram_message(products, driver, sent_products):
                 except Exception as e:
                     print(f"❌ Falha ao enviar mensagem para Telegram: {e}")
             
-            # Envia para WhatsApp se habilitado e conectado
-            if WHATSAPP_ENABLED and whatsapp_status == 'CONNECTED':
+            # Envia para WhatsApp se habilitado
+            if WHATSAPP_ENABLED:
                 try:
                     from scraper_ml import _load_whatsapp_destinations
                     destinations = _load_whatsapp_destinations()
@@ -525,7 +522,7 @@ def send_telegram_message(products, driver, sent_products):
                     print(f"❌ Erro ao enviar para WhatsApp: {str(e)}")
             
             # Salva no histórico se pelo menos um dos envios foi bem-sucedido
-            if telegram_success or (WHATSAPP_ENABLED and whatsapp_success):
+            if telegram_success or whatsapp_success:
                 new_sent_products.append(product['nome'])
             else:
                 print(f"❌ Falha total ao enviar produto: {product['nome']}")

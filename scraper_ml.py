@@ -627,30 +627,17 @@ def get_product_details(driver, url, max_retries=3):
 def check_promotions():
     log("Iniciando verificação de promoções...")
     
-    # Verifica status do WhatsApp se habilitado
+    # Verifica status do WhatsApp apenas para log, sem travar o scraper
     whatsapp_status = 'OFFLINE'
     if WHATSAPP_ENABLED:
-        max_retries = 30 # Tenta por até 5 minutos (30 * 10s)
-        retry_count = 0
-        while retry_count < max_retries:
-            try:
-                whatsapp_status = wpp_check_connection_state()
-                if whatsapp_status == 'CONNECTED':
-                    log("✅ WhatsApp pronto para envio.")
-                    break
-                elif whatsapp_status == 'DISCONNECTED':
-                    log("⚠️ WhatsApp deslogado. Aguardando conexão (QR Code no Telegram)...")
-                else:
-                    log(f"❌ Servidor WhatsApp está offline/iniciando (Tentativa {retry_count+1}/{max_retries})")
-            except Exception as e:
-                log(f"Erro ao verificar WhatsApp: {e}")
-            
-            retry_count += 1
-            time.sleep(10) # Aguarda 10 segundos entre verificações
-        
-        if whatsapp_status != 'CONNECTED':
-            log("❌ Abortando verificação: WhatsApp não conectou a tempo.")
-            return
+        try:
+            whatsapp_status = wpp_check_connection_state()
+            if whatsapp_status == 'CONNECTED':
+                log("✅ WhatsApp pronto.")
+            else:
+                log(f"⚠️ WhatsApp status: {whatsapp_status}. Tentando enviar mesmo assim.")
+        except:
+            log("⚠️ Falha ao verificar status do WhatsApp. Prosseguindo com a coleta.")
     
     driver = None
     try:
@@ -689,9 +676,9 @@ def check_promotions():
                     except Exception as e:
                         log(f"Erro ao enviar com foto para Telegram: {str(e)}")
 
-                # Envia para WhatsApp se habilitado e conectado
+                # Envia para WhatsApp se habilitado
                 whatsapp_success = False
-                if WHATSAPP_ENABLED and whatsapp_status == 'CONNECTED':
+                if WHATSAPP_ENABLED:
                     try:
                         destinations = _load_whatsapp_destinations()
                         whatsapp_success = wpp_send_message(destinations=destinations, message=message, image_url=image_url)
@@ -701,7 +688,7 @@ def check_promotions():
                         log(f"Erro ao enviar para WhatsApp: {str(e)}")
                 
                 # Salva no histórico se pelo menos um dos envios foi bem-sucedido
-                if telegram_success or (WHATSAPP_ENABLED and whatsapp_success):
+                if telegram_success or whatsapp_success:
                     if not TEST_MODE:
                         sent_promotions.append(product_title)
                         save_promo_history(sent_promotions)

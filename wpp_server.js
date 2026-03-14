@@ -26,9 +26,26 @@ let lastTelegramMsgIds = {}; // Objeto para rastrear MsgID por ChatID
 const tokensPath = path.join(__dirname, 'tokens');
 const sessionPath = path.join(tokensPath, SESSION_NAME);
 const userDataPath = path.join(sessionPath, 'userData');
+const statusFilePath = path.join(tokensPath, 'server_status.json');
 
 // Garante que a pasta base existe
 if (!fs.existsSync(tokensPath)) fs.mkdirSync(tokensPath, { recursive: true });
+
+function updateStatusFile(extra = {}) {
+    try {
+        const data = {
+            status: 'success',
+            state: status,
+            internalStatus: status,
+            updatedAt: new Date().toISOString(),
+            session: SESSION_NAME,
+            ...extra
+        };
+        fs.writeFileSync(statusFilePath, JSON.stringify(data, null, 2));
+    } catch (e) {
+        log('ERROR', `Erro ao salvar status file: ${e.message}`);
+    }
+}
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -98,6 +115,7 @@ async function initializeClient() {
     starting = true;
     status = 'STARTING';
     currentQr = null;
+    updateStatusFile();
 
     try {
         log('INFO', `Iniciando sessão '${SESSION_NAME}' (Metodologia: Keep-Alive)`);
@@ -141,11 +159,13 @@ async function initializeClient() {
                 currentQr = base64Qr.startsWith('data:') ? base64Qr : `data:image/png;base64,${base64Qr}`;
                 status = 'QRCODE';
                 qrCount++;
+                updateStatusFile({ hasQr: true });
                 log('INFO', `QR Code gerado (${qrCount}º)`);
                 notifyTelegram(`📲 *${qrCount}º QR Code do WhatsApp*\nEscaneie agora para conectar o servidor.`, currentQr);
             },
             statusFind: (statusSession) => {
                 log('INFO', `Status da Sessão: ${statusSession}`);
+                updateStatusFile({ sessionStatus: statusSession });
                 
                 if (statusSession === 'isLogged' || statusSession === 'inChat' || statusSession === 'qrReadSuccess') {
                     if (status !== 'CONNECTED') {
@@ -155,6 +175,7 @@ async function initializeClient() {
                         }
                         status = 'CONNECTED';
                         currentQr = null;
+                        updateStatusFile({ isReady: true });
                         log('INFO', 'WhatsApp conectado e pronto!');
                     }
                 }
