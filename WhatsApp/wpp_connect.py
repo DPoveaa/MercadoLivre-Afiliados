@@ -49,18 +49,21 @@ def get_local_ip():
 
 def wpp_check_connection_state():
     """
-    Retorna o estado da conexão do WhatsApp.
-    Tenta resolver o endereço de forma robusta para Ubuntu Server.
+    Retorna o estado da conexão do WhatsApp com depuração avançada.
     """
     load_dotenv()
     
-    # Prioriza a URL configurada no .env
-    base_url = os.getenv("WPP_BASE_URL", "http://localhost:21465").rstrip('/')
+    # Configurações do .env
+    env_base_url = os.getenv("WPP_BASE_URL", "http://localhost:21465").rstrip('/')
     local_ip = get_local_ip()
+    timestamp_init = time.strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp_init}] [WPP-DEBUG] Iniciando verificação de conexão...", flush=True)
     
+    # No Linux (Ubuntu), 127.0.0.1 é mais confiável que localhost (evita IPv6)
+    # Priorizamos 127.0.0.1 e a URL do .env
     urls_to_try = [
-        f"{base_url}/api/status",
         "http://127.0.0.1:21465/api/status",
+        f"{env_base_url}/api/status",
         "http://localhost:21465/api/status",
         f"http://{local_ip}:21465/api/status"
     ]
@@ -70,36 +73,37 @@ def wpp_check_connection_state():
     
     last_error = ""
     for url in urls_to_try:
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         try:
-            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
             # Usando uma sessão para evitar problemas de DNS cache
             with requests.Session() as s:
-                # Aumentado timeout para 15s pois o servidor pode estar processando estados pesados
+                # Timeout generoso de 15s
                 r = s.get(url, headers=_wpp_headers(), timeout=15)
                 
                 if r.status_code == 200:
                     data = r.json()
-                    # Verifica múltiplos campos de status para compatibilidade
-                    state = str(data.get("state") or data.get("internalStatus") or data.get("status") or "").upper()
+                    # LOG VERBOSO PARA O SERVIDOR
+                    print(f"[{timestamp}] [WPP-DEBUG] Resposta de {url}: {data}", flush=True)
+                    
+                    # Extraímos o estado real ignorando o campo 'status' do Express
+                    state = str(data.get("state") or data.get("internalStatus") or "").upper()
                     is_ready = data.get("isReady") is True
                     
-                    print(f"[{timestamp}] [WPP-DEBUG] SUCESSO em {url}. Estado: {state}, Ready: {is_ready}")
-                    
-                    # Estados que indicam que o servidor está operacional, mesmo que sincronizando
+                    # Estados operacionais
                     valid_states = ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING", "MAIN", "NORMAL")
                     if state in valid_states or is_ready:
                         return 'CONNECTED'
                     
+                    print(f"[{timestamp}] [WPP-DEBUG] Servidor respondeu, mas estado não é CONNECTED: {state}", flush=True)
                     return 'DISCONNECTED'
                 else:
-                    print(f"[{timestamp}] [WPP-DEBUG] URL {url} respondeu status {r.status_code}")
+                    print(f"[{timestamp}] [WPP-DEBUG] URL {url} respondeu status HTTP {r.status_code}", flush=True)
                     
         except Exception as e:
             last_error = str(e)
-            print(f"[{timestamp}] [WPP-DEBUG] FALHA em {url}: {last_error}")
+            print(f"[{timestamp}] [WPP-DEBUG] Erro ao acessar {url}: {last_error}", flush=True)
             continue
             
-    print(f"[{timestamp}] [WPP-DEBUG] Todas as tentativas falharam. Erro final: {last_error}")
     return 'OFFLINE'
 
 def wpp_send_message(destinations, message, image_url=None):
