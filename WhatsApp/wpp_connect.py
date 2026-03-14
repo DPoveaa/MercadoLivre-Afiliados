@@ -1,41 +1,23 @@
 import os
 import time
 import requests
+import socket
+import json
+import subprocess
+import sys
 from dotenv import load_dotenv
 
 # Garante que as variáveis do .env estão disponíveis para este módulo
 load_dotenv()
 
-# Configurações carregadas do ambiente
-WPP_BASE_URL = os.getenv("WPP_BASE_URL", "http://localhost:21465")
-WPP_SESSION = os.getenv("WPP_SESSION", "default")
-
 def log(message):
-    """Função para logging com timestamp"""
+    """Função para logging com timestamp e flush forçado"""
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] [WPP-Client] {message}")
+    print(f"[{timestamp}] [WPP-Client] {message}", flush=True)
+    sys.stdout.flush()
 
 def _wpp_headers():
     return {"Content-Type": "application/json"}
-
-def wpp_server_is_up():
-    """Verifica se o servidor WPPConnect (que deve rodar via PM2) está online"""
-    try:
-        # Tenta o endpoint de status que criamos no wpp_server.js
-        url = f"{WPP_BASE_URL}/api/status"
-        r = requests.get(url, timeout=3)
-        return r.status_code == 200
-    except Exception:
-        # Se falhar, tenta o root ou api-docs como fallback
-        try:
-            r = requests.get(f"{WPP_BASE_URL}/", timeout=2)
-            return r.status_code in (200, 404) # 404 também significa que o express está rodando
-        except:
-            return False
-
-import traceback
-
-import socket
 
 def get_local_ip():
     try:
@@ -47,63 +29,62 @@ def get_local_ip():
     except:
         return "127.0.0.1"
 
+def check_port_open(host, port, timeout=2):
+    """Verifica se uma porta TCP está aberta usando sockets (mais rápido e imune a proxy)"""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except:
+        return False
+
 def wpp_check_connection_state():
     """
-    Retorna o estado da conexão do WhatsApp com depuração avançada.
+    Retorna o estado da conexão do WhatsApp com tripla verificação: Socket -> HTTP -> Curl
     """
     load_dotenv()
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     
-    # Configurações do .env
-    env_base_url = os.getenv("WPP_BASE_URL", "http://localhost:21465").rstrip('/')
-    local_ip = get_local_ip()
-    timestamp_init = time.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp_init}] [WPP-DEBUG] Iniciando verificação de conexão...", flush=True)
-    
-    # No Linux (Ubuntu), 127.0.0.1 é mais confiável que localhost (evita IPv6)
-    # Priorizamos 127.0.0.1 e a URL do .env
-    urls_to_try = [
-        "http://127.0.0.1:21465/api/status",
-        f"{env_base_url}/api/status",
-        "http://localhost:21465/api/status",
-        f"http://{local_ip}:21465/api/status"
-    ]
-    
-    # Remove duplicatas mantendo a ordem
-    urls_to_try = list(dict.fromkeys(urls_to_try))
-    
-    last_error = ""
-    for url in urls_to_try:
-        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        try:
-            # Usando uma sessão para evitar problemas de DNS cache
-            with requests.Session() as s:
-                # Timeout generoso de 15s
-                r = s.get(url, headers=_wpp_headers(), timeout=15)
-                
-                if r.status_code == 200:
-                    data = r.json()
-                    # LOG VERBOSO PARA O SERVIDOR
-                    print(f"[{timestamp}] [WPP-DEBUG] Resposta de {url}: {data}", flush=True)
-                    
-                    # Extraímos o estado real ignorando o campo 'status' do Express
-                    state = str(data.get("state") or data.get("internalStatus") or "").upper()
-                    is_ready = data.get("isReady") is True
-                    
-                    # Estados operacionais
-                    valid_states = ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING", "MAIN", "NORMAL")
-                    if state in valid_states or is_ready:
-                        return 'CONNECTED'
-                    
-                    print(f"[{timestamp}] [WPP-DEBUG] Servidor respondeu, mas estado não é CONNECTED: {state}", flush=True)
-                    return 'DISCONNECTED'
-                else:
-                    print(f"[{timestamp}] [WPP-DEBUG] URL {url} respondeu status HTTP {r.status_code}", flush=True)
-                    
-        except Exception as e:
-            last_error = str(e)
-            print(f"[{timestamp}] [WPP-DEBUG] Erro ao acessar {url}: {last_error}", flush=True)
-            continue
+    # 1. Verificação rápida via Socket (Porta 21465)
+    # No Ubuntu, 127.0.0.1 é SEMPRE mais seguro que localhost
+    if not check_port_open("127.0.0.1", 21465):
+        print(f"[{timestamp}] [WPP-DEBUG] Porta 21465 fechada em 127.0.0.1. Servidor parece offline.", flush=True)
+        return 'OFFLINE'
+
+    # 2. Verificação via HTTP (API Status)
+    # Forçamos bypass de proxy (importante no Linux)
+    url = "http://127.0.0.1:21465/api/status"
+    try:
+        with requests.Session() as s:
+            s.trust_env = False # Ignora variáveis de ambiente de proxy (http_proxy, etc)
+            r = s.get(url, headers=_wpp_headers(), timeout=10, proxies={"http": None, "https": None})
             
+            if r.status_code == 200:
+                data = r.json()
+                print(f"[{timestamp}] [WPP-DEBUG] HTTP Sucesso: {data}", flush=True)
+                state = str(data.get("state") or data.get("internalStatus") or "").upper()
+                is_ready = data.get("isReady") is True
+                
+                valid_states = ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING", "MAIN", "NORMAL")
+                if state in valid_states or is_ready:
+                    return 'CONNECTED'
+                return 'DISCONNECTED'
+    except Exception as e:
+        print(f"[{timestamp}] [WPP-DEBUG] Erro HTTP (requests): {e}", flush=True)
+
+    # 3. Fallback via Curl (Comando do sistema - última tentativa)
+    try:
+        print(f"[{timestamp}] [WPP-DEBUG] Tentando fallback via comando curl...", flush=True)
+        cmd = ["curl", "-s", "-X", "GET", url]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode == 0 and result.stdout:
+            data = json.loads(result.stdout)
+            print(f"[{timestamp}] [WPP-DEBUG] Curl Sucesso: {data}", flush=True)
+            state = str(data.get("state") or data.get("internalStatus") or "").upper()
+            if state in ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING", "MAIN", "NORMAL"):
+                return 'CONNECTED'
+    except Exception as e:
+        print(f"[{timestamp}] [WPP-DEBUG] Erro Fallback (curl): {e}", flush=True)
+
     return 'OFFLINE'
 
 def wpp_send_message(destinations, message, image_url=None):
