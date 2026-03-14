@@ -149,9 +149,12 @@ async function initializeClient() {
                 
                 if (statusSession === 'isLogged' || statusSession === 'inChat' || statusSession === 'qrReadSuccess') {
                     if (status !== 'CONNECTED') {
+                        // Só notifica se foi uma leitura de QR bem sucedida (ou seja, não estava conectado antes)
+                        if (status === 'QRCODE' || qrCount > 0) {
+                            notifyTelegram("✅ *WhatsApp Conectado!*\nO servidor está pronto para enviar mensagens.");
+                        }
                         status = 'CONNECTED';
                         currentQr = null;
-                        notifyTelegram("✅ *WhatsApp Conectado!*\nO servidor está pronto para enviar mensagens.");
                         log('INFO', 'WhatsApp conectado e pronto!');
                     }
                 }

@@ -630,17 +630,27 @@ def check_promotions():
     # Verifica status do WhatsApp se habilitado
     whatsapp_status = 'OFFLINE'
     if WHATSAPP_ENABLED:
-        try:
-            whatsapp_status = wpp_check_connection_state()
-            if whatsapp_status == 'CONNECTED':
-                log("✅ WhatsApp pronto para envio.")
-            elif whatsapp_status == 'DISCONNECTED':
-                log("⚠️ WhatsApp deslogado. Verifique o QR Code no Telegram.")
-            else:
-                log("❌ Servidor WhatsApp está offline.")
-        except Exception as e:
-            log(f"Erro ao verificar WhatsApp: {e}")
-            whatsapp_status = 'OFFLINE'
+        max_retries = 30 # Tenta por até 5 minutos (30 * 10s)
+        retry_count = 0
+        while retry_count < max_retries:
+            try:
+                whatsapp_status = wpp_check_connection_state()
+                if whatsapp_status == 'CONNECTED':
+                    log("✅ WhatsApp pronto para envio.")
+                    break
+                elif whatsapp_status == 'DISCONNECTED':
+                    log("⚠️ WhatsApp deslogado. Aguardando conexão (QR Code no Telegram)...")
+                else:
+                    log(f"❌ Servidor WhatsApp está offline/iniciando (Tentativa {retry_count+1}/{max_retries})")
+            except Exception as e:
+                log(f"Erro ao verificar WhatsApp: {e}")
+            
+            retry_count += 1
+            time.sleep(10) # Aguarda 10 segundos entre verificações
+        
+        if whatsapp_status != 'CONNECTED':
+            log("❌ Abortando verificação: WhatsApp não conectou a tempo.")
+            return
     
     driver = None
     try:

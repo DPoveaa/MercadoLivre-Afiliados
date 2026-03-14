@@ -72,20 +72,22 @@ def wpp_check_connection_state():
     for url in urls_to_try:
         try:
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-            print(f"[{timestamp}] [WPP-DEBUG] Testando conexão em: {url}")
-            
             # Usando uma sessão para evitar problemas de DNS cache
             with requests.Session() as s:
-                r = s.get(url, headers=_wpp_headers(), timeout=10)
+                # Aumentado timeout para 15s pois o servidor pode estar processando estados pesados
+                r = s.get(url, headers=_wpp_headers(), timeout=15)
                 
                 if r.status_code == 200:
                     data = r.json()
                     # Verifica múltiplos campos de status para compatibilidade
                     state = str(data.get("state") or data.get("internalStatus") or data.get("status") or "").upper()
-                    print(f"[{timestamp}] [WPP-DEBUG] SUCESSO em {url}. Estado: {state}")
+                    is_ready = data.get("isReady") is True
                     
+                    print(f"[{timestamp}] [WPP-DEBUG] SUCESSO em {url}. Estado: {state}, Ready: {is_ready}")
+                    
+                    # Estados que indicam que o servidor está operacional, mesmo que sincronizando
                     valid_states = ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING", "MAIN", "NORMAL")
-                    if state in valid_states or data.get("isReady") is True:
+                    if state in valid_states or is_ready:
                         return 'CONNECTED'
                     
                     return 'DISCONNECTED'
