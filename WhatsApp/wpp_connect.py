@@ -35,53 +35,70 @@ def wpp_server_is_up():
 
 import traceback
 
+import socket
+
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except:
+        return "127.0.0.1"
+
 def wpp_check_connection_state():
     """
     Retorna o estado da conexão do WhatsApp.
     Tenta resolver o endereço de forma robusta para Ubuntu Server.
     """
-    # Recarrega as variáveis do .env a cada chamada
     load_dotenv()
     
-    # Lista de endereços para tentar (priorizando 127.0.0.1 que é mais estável no Ubuntu)
-    # Tenta localhost, 127.0.0.1 e 0.0.0.0 na porta 21465
+    # Prioriza a URL configurada no .env
+    base_url = os.getenv("WPP_BASE_URL", "http://localhost:21465").rstrip('/')
+    local_ip = get_local_ip()
+    
     urls_to_try = [
+        f"{base_url}/api/status",
         "http://127.0.0.1:21465/api/status",
         "http://localhost:21465/api/status",
-        "http://0.0.0.0:21465/api/status"
+        f"http://{local_ip}:21465/api/status"
     ]
+    
+    # Remove duplicatas mantendo a ordem
+    urls_to_try = list(dict.fromkeys(urls_to_try))
     
     last_error = ""
     for url in urls_to_try:
         try:
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-            # Log forçado no terminal
-            print(f"[{timestamp}] [WPP-DEBUG] Tentando checar conexão em: {url}")
+            print(f"[{timestamp}] [WPP-DEBUG] Testando conexão em: {url}")
             
-            r = requests.get(url, headers=_wpp_headers(), timeout=5)
-            
-            if r.status_code == 200:
-                data = r.json()
-                state = str(data.get("state") or data.get("internalStatus") or "").upper()
-                print(f"[{timestamp}] [WPP-DEBUG] SUCESSO em {url}. Estado: {state}")
+            # Usando uma sessão para evitar problemas de DNS cache
+            with requests.Session() as s:
+                r = s.get(url, headers=_wpp_headers(), timeout=10)
                 
-                valid_states = ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING", "MAIN", "NORMAL")
-                if state in valid_states or data.get("isReady") is True:
-                    return 'CONNECTED'
-                
-                return 'DISCONNECTED'
-            else:
-                print(f"[{timestamp}] [WPP-DEBUG] URL {url} respondeu status {r.status_code}")
-                
+                if r.status_code == 200:
+                    data = r.json()
+                    # Verifica múltiplos campos de status para compatibilidade
+                    state = str(data.get("state") or data.get("internalStatus") or data.get("status") or "").upper()
+                    print(f"[{timestamp}] [WPP-DEBUG] SUCESSO em {url}. Estado: {state}")
+                    
+                    valid_states = ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING", "MAIN", "NORMAL")
+                    if state in valid_states or data.get("isReady") is True:
+                        return 'CONNECTED'
+                    
+                    return 'DISCONNECTED'
+                else:
+                    print(f"[{timestamp}] [WPP-DEBUG] URL {url} respondeu status {r.status_code}")
+                    
         except Exception as e:
             last_error = str(e)
             print(f"[{timestamp}] [WPP-DEBUG] FALHA em {url}: {last_error}")
             continue
             
     print(f"[{timestamp}] [WPP-DEBUG] Todas as tentativas falharam. Erro final: {last_error}")
-    # Se todas as checagens de status falharem, retornamos CONNECTED como fallback 
-    # para forçar o wpp_send_message a tentar o envio real, que é o que importa.
-    return 'CONNECTED'
+    return 'OFFLINE'
 
 def wpp_send_message(destinations, message, image_url=None):
     """
@@ -91,20 +108,20 @@ def wpp_send_message(destinations, message, image_url=None):
         return False
     
     # Recarrega a URL para garantir que está correta
-    base_url = os.getenv("WPP_BASE_URL", "http://localhost:21465")
-    session = os.getenv("WPP_SESSION", "default")
+    base_url = os.getenv("WPP_BASE_URL", "http://localhost:21465").rstrip('/')
     
     success_count = 0
     for dest in destinations:
-        # Tenta até 2 vezes em caso de timeout
+        # Tenta até 2 vezes em caso de timeout ou erro de URL
         for attempt in range(2):
             try:
                 payload = {"caption": message}
+                # O wpp_server.js NÃO usa a sessão na URL para send-message e send-file
                 if image_url:
-                    url = f"{base_url}/api/{session}/send-file"
+                    url = f"{base_url}/api/send-file"
                     payload.update({"url": image_url, "fileName": "image.jpg"})
                 else:
-                    url = f"{base_url}/api/{session}/send-message"
+                    url = f"{base_url}/api/send-message"
                     payload.update({"message": message})
 
                 if dest.endswith("@g.us"):

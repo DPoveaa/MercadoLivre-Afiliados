@@ -633,15 +633,15 @@ def check_promotions():
         try:
             whatsapp_status = wpp_check_connection_state()
             if whatsapp_status == 'CONNECTED':
-                log("✅ WhatsApp conectado e pronto para envio.")
+                log("✅ WhatsApp pronto para envio.")
             elif whatsapp_status == 'DISCONNECTED':
-                log("⚠️ WhatsApp deslogado. Verifique o QR Code.")
+                log("⚠️ WhatsApp deslogado. Verifique o QR Code no Telegram.")
             else:
                 log("❌ Servidor WhatsApp está offline.")
         except Exception as e:
-            log(f"Erro ao verificar conexão WhatsApp: {e}")
+            log(f"Erro ao verificar WhatsApp: {e}")
             whatsapp_status = 'OFFLINE'
-
+    
     driver = None
     try:
         driver = init_driver()
