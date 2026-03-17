@@ -19,6 +19,12 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 import undetected_chromedriver as uc
 from webdriver_manager.chrome import ChromeDriverManager
 from Telegram.tl_enviar import send_telegram_message
+
+# PM2/cwd differences can break local imports. Ensure project root is on sys.path.
+_PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+if _PROJECT_DIR not in sys.path:
+    sys.path.insert(0, _PROJECT_DIR)
+
 from whatsapp.wpp_connect import (
     wpp_send_message,
     wpp_check_connection_state,

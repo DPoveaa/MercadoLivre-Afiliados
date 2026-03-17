@@ -23,6 +23,12 @@ import schedule
 import subprocess
 from collections import deque
 import sys
+
+# PM2/cwd differences can break local imports. Ensure project root is on sys.path.
+_PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+if _PROJECT_DIR not in sys.path:
+    sys.path.insert(0, _PROJECT_DIR)
+
 from whatsapp.wpp_connect import (
     wpp_send_message,
     wpp_check_connection_state,
