@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
+import undetected_chromedriver as uc
 import requests
 import re
 from datetime import datetime
@@ -79,6 +80,75 @@ FORCE_RUN_ON_START = os.getenv("FORCE_RUN_ON_START", "false").lower() == "true"
 # Configurações gerais
 SIMILARITY_THRESHOLD = 0.95  # Limiar de similaridade mais restritivo
 MAX_HISTORY_SIZE = 150  # Mantém as últimas promoções
+
+# Driver init aligned with scraper_ml: headless by default, with safe fallback.
+def init_driver(custom_tmp: str = None):
+    """
+    Inicializa o Chrome em modo "stealth" (undetected-chromedriver).
+
+    Env knobs:
+    - AMAZON_HEADLESS=true|false (default: true)
+    """
+    log("Inicializando navegador com undetected-chromedriver...")
+
+    def build_options(headless: bool):
+        opts = uc.ChromeOptions()
+        opts.add_argument("--no-sandbox")
+        opts.add_argument("--disable-dev-shm-usage")
+        opts.add_argument("--disable-blink-features=AutomationControlled")
+        opts.add_argument("--window-size=1920,1080")
+        opts.add_argument("--lang=pt-BR")
+        opts.add_argument(
+            "--user-agent=Mozilla/5.0 (X11; Linux x86_64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        )
+        if headless:
+            opts.add_argument("--headless=new")
+        if custom_tmp:
+            opts.add_argument(f"--user-data-dir={custom_tmp}/user_data")
+            opts.add_argument(f"--disk-cache-dir={custom_tmp}/cache")
+        return opts
+
+    browser_executable_path = None
+    if os.name != "nt":
+        if os.path.exists("/usr/bin/google-chrome"):
+            browser_executable_path = "/usr/bin/google-chrome"
+        elif os.path.exists("/usr/bin/chromium-browser"):
+            browser_executable_path = "/usr/bin/chromium-browser"
+        elif os.path.exists("/usr/bin/chromium"):
+            browser_executable_path = "/usr/bin/chromium"
+
+    headless_pref = os.getenv("AMAZON_HEADLESS", "true").lower() == "true"
+
+    try:
+        options = build_options(headless=headless_pref)
+        driver = uc.Chrome(
+            options=options,
+            driver_executable_path=ChromeDriverManager().install(),
+            browser_executable_path=browser_executable_path
+        )
+        log(f"Navegador stealth iniciado (headless={headless_pref})")
+        return driver
+    except Exception as e:
+        log(f"Erro ao iniciar navegador (tentativa 1, headless={headless_pref}): {e}")
+
+        if headless_pref:
+            try:
+                options = build_options(headless=False)
+                driver = uc.Chrome(
+                    options=options,
+                    headless=False,
+                    driver_executable_path=ChromeDriverManager().install(),
+                    browser_executable_path=browser_executable_path
+                )
+                log("Navegador stealth iniciado (fallback não-headless)")
+                return driver
+            except Exception as e2:
+                log(f"Erro fatal ao iniciar navegador (fallback não-headless): {e2}")
+                raise
+
+        raise
 
 # Lista de categorias para capturar ofertas
 AMAZON_CATEGORIES = [
@@ -987,24 +1057,7 @@ def run_scraper():
     os.environ['TEMP'] = custom_tmp
     os.environ['TMP'] = custom_tmp
 
-    chrome_options = Options()
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--start-maximized")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--disable-extensions")
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--enable-unsafe-swiftshader")
-    # Adicionar diretórios temporários customizados
-    chrome_options.add_argument(f'--user-data-dir={custom_tmp}/user_data')
-    chrome_options.add_argument(f'--disk-cache-dir={custom_tmp}/cache')
-
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-
-
-
+    driver = init_driver(custom_tmp=custom_tmp)
     try:
         print("🔄 Iniciando coleta de links de ofertas de todas as categorias...")
         deal_links = amazon_scraper(driver)
@@ -1089,7 +1142,10 @@ def run_scraper():
     except Exception as e:
         print(f"❌ Erro durante a execução do scraper: {e}")
     finally:
-        driver.quit()
+        try:
+            driver.quit()
+        except Exception:
+            pass
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Execução finalizada.")
 
 def schedule_scraper():
