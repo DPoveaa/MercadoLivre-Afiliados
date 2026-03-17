@@ -135,53 +135,55 @@ def init_driver():
     """Inicializa o driver do Chrome com configurações stealth"""
     log("Inicializando navegador com undetected-chromedriver...")
 
-    options = uc.ChromeOptions()
-    
-    # Opções essenciais para servidor Linux headless
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--headless=new')
-    
-    # Opções adicionais para estabilidade
-    options.add_argument('--disable-extensions')
-    options.add_argument('--disable-plugins')
-    options.add_argument('--disable-images')
-    options.add_argument('--disable-javascript')
-    options.add_argument('--disable-background-timer-throttling')
-    options.add_argument('--disable-backgrounding-occluded-windows')
-    options.add_argument('--disable-renderer-backgrounding')
-    options.add_argument('--disable-features=TranslateUI')
-    options.add_argument('--disable-ipc-flooding-protection')
-    options.add_argument('--disable-default-apps')
-    options.add_argument('--disable-sync')
-    options.add_argument('--no-first-run')
-    options.add_argument('--no-default-browser-check')
-    options.add_argument('--disable-blink-features=AutomationControlled')
-    options.add_argument('--disable-web-security')
-    options.add_argument('--allow-running-insecure-content')
-    options.add_argument('--disable-features=VizDisplayCompositor')
-    
-    # User agent para Linux
-    options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-    
-    # Configurações de memória e performance
-    options.add_argument('--memory-pressure-off')
-    options.add_argument('--max_old_space_size=4096')
-    options.add_argument('--disable-background-networking')
-    
+    def build_options():
+        opts = uc.ChromeOptions()
+        # Essential for Linux servers/headless stability
+        opts.add_argument("--headless=new")
+        opts.add_argument("--no-sandbox")
+        opts.add_argument("--disable-dev-shm-usage")
+        opts.add_argument("--disable-blink-features=AutomationControlled")
+        opts.add_argument("--window-size=1920,1080")
+        opts.add_argument("--lang=pt-BR")
+        opts.add_argument(
+            "--user-agent=Mozilla/5.0 (X11; Linux x86_64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        )
+        return opts
+
+    # Detecta Chrome no Linux (evita o UDC tentar um binario inexistente)
+    browser_executable_path = None
+    if platform.system() == "Linux":
+        if os.path.exists("/usr/bin/google-chrome"):
+            browser_executable_path = "/usr/bin/google-chrome"
+        elif os.path.exists("/usr/bin/chromium-browser"):
+            browser_executable_path = "/usr/bin/chromium-browser"
+
     try:
+        options = build_options()
         driver = uc.Chrome(
             options=options,
-            headless=True,
             driver_executable_path=ChromeDriverManager().install(),
-            version_main=None  # Deixa o undetected-chromedriver detectar automaticamente
+            browser_executable_path=browser_executable_path
         )
         log("Navegador stealth iniciado")
         return driver
     except Exception as e:
-        log(f"Erro ao iniciar o navegador: {str(e)}")
-        raise
+        log(f"Erro ao iniciar o navegador (tentativa 1): {e}")
+
+        # Fallback: tenta sem headless para depurar / contornar crash de headless
+        try:
+            options = build_options()
+            driver = uc.Chrome(
+                options=options,
+                headless=False,
+                driver_executable_path=ChromeDriverManager().install()
+            )
+            log("Navegador stealth iniciado (fallback)")
+            return driver
+        except Exception as e2:
+            log(f"Erro fatal ao iniciar navegador: {e2}")
+            raise
 
 def load_promo_history():
     """Carrega o histórico de nomes de produtos já enviados"""

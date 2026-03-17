@@ -616,6 +616,41 @@ def generate_affiliate_links(driver, product_links):
     """Gera links de afiliados e coleta dados do produto"""
     product_data = []
 
+    def _collect_amazon_shortlink():
+        """
+        Collects the short affiliate link via Amazon SiteStripe.
+
+        Expected elements (pt-BR UI):
+        - button#amzn-ss-get-link-button
+        - textarea#amzn-ss-text-shortlink-textarea
+        """
+        # Ensure top bar is reachable
+        driver.execute_script("window.scrollTo(0, 0);")
+
+        # Wait for SiteStripe button; if click is intercepted, fall back to JS click.
+        btn = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "button#amzn-ss-get-link-button"))
+        )
+        try:
+            WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button#amzn-ss-get-link-button")))
+            btn.click()
+        except Exception:
+            driver.execute_script("arguments[0].click();", btn)
+
+        textarea = WebDriverWait(driver, 25).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "#amzn-ss-text-shortlink-textarea"))
+        )
+
+        def _read_value():
+            v = (textarea.get_attribute("value") or "").strip()
+            if v:
+                return v
+            t = (textarea.text or "").strip()
+            return t
+
+        WebDriverWait(driver, 20).until(lambda d: "amzn.to/" in _read_value())
+        return _read_value()
+
     for url_info in product_links:
         url = url_info['link']
         category = url_info.get('category', 'Geral')
@@ -690,21 +725,19 @@ def generate_affiliate_links(driver, product_links):
 
             # 3. COLETA LINK AFILIADO (OBRIGATÓRIO)
             try:
-                driver.execute_script("window.scrollTo(0, 0);")
-                WebDriverWait(driver, 10).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, "button#amzn-ss-get-link-button"))
-                ).click()
-
-                textarea = WebDriverWait(driver, 10).until(
-                    EC.visibility_of_element_located((By.CSS_SELECTOR, "#amzn-ss-text-shortlink-textarea"))
-                )
-                
-                WebDriverWait(driver, 5).until(
-                    lambda d: "amzn.to/" in textarea.get_attribute("value"))
-                
-                product_info['link'] = textarea.get_attribute("value").strip()
+                product_info['link'] = _collect_amazon_shortlink()
             except Exception as e:
-                print(f"Erro no link afiliado: {str(e)}")
+                # str(e) for selenium timeouts often becomes just "Message:"; add context
+                try:
+                    has_btn = len(driver.find_elements(By.CSS_SELECTOR, "button#amzn-ss-get-link-button")) > 0
+                    has_textarea = len(driver.find_elements(By.CSS_SELECTOR, "#amzn-ss-text-shortlink-textarea")) > 0
+                    print(
+                        "Erro no link afiliado: "
+                        f"{repr(e)} | url={driver.current_url} | title={driver.title} | "
+                        f"has_btn={has_btn} has_textarea={has_textarea}"
+                    )
+                except Exception:
+                    print(f"Erro no link afiliado: {repr(e)}")
                 continue  # Aborta se não gerar link
 
             # 4. COLETA DEMAIS INFORMAÇÕES (OPCIONAIS)
