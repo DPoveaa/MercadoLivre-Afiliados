@@ -105,7 +105,7 @@ def init_driver(custom_tmp: str = None):
     """
     log("Inicializando navegador com undetected-chromedriver...")
 
-    def build_options(headless: bool):
+    def build_options(headless: bool, headless_mode: str):
         opts = uc.ChromeOptions()
         opts.add_argument("--no-sandbox")
         opts.add_argument("--disable-dev-shm-usage")
@@ -118,7 +118,11 @@ def init_driver(custom_tmp: str = None):
             "Chrome/120.0.0.0 Safari/537.36"
         )
         if headless:
-            opts.add_argument("--headless=new")
+            # Some sites behave differently on "new" headless; keep a fallback to old headless.
+            if str(headless_mode).lower() == "old":
+                opts.add_argument("--headless")
+            else:
+                opts.add_argument("--headless=new")
         if custom_tmp:
             opts.add_argument(f"--user-data-dir={custom_tmp}/user_data")
             opts.add_argument(f"--disk-cache-dir={custom_tmp}/cache")
@@ -134,28 +138,64 @@ def init_driver(custom_tmp: str = None):
             browser_executable_path = "/usr/bin/chromium"
 
     headless_pref = os.getenv("AMAZON_HEADLESS", "true").lower() == "true"
+    headless_mode_pref = os.getenv("AMAZON_HEADLESS_MODE", "new").lower()  # new|old
 
     try:
-        options = build_options(headless=headless_pref)
-        driver = uc.Chrome(
-            options=options,
-            driver_executable_path=ChromeDriverManager().install(),
-            browser_executable_path=browser_executable_path
-        )
-        log(f"Navegador stealth iniciado (headless={headless_pref})")
-        return driver
+        if headless_pref:
+            modes = [headless_mode_pref]
+            if headless_mode_pref != "old":
+                modes.append("old")
+            if headless_mode_pref != "new":
+                modes.append("new")
+        else:
+            modes = [None]
+
+        last_err = None
+        for mode in modes:
+            try:
+                options = build_options(headless=headless_pref, headless_mode=mode or "new")
+                driver = uc.Chrome(
+                    options=options,
+                    driver_executable_path=ChromeDriverManager().install(),
+                    browser_executable_path=browser_executable_path
+                )
+                # Defensive timeouts: avoid indefinite hangs on navigation/scripts.
+                try:
+                    driver.set_page_load_timeout(60)
+                    driver.set_script_timeout(60)
+                except Exception:
+                    pass
+
+                if headless_pref:
+                    log(f"Navegador stealth iniciado (headless=True mode={mode or 'new'})")
+                else:
+                    log("Navegador stealth iniciado (headless=False)")
+                return driver
+            except Exception as e_mode:
+                last_err = e_mode
+                if headless_pref:
+                    log(f"Erro ao iniciar navegador (headless mode={mode}): {e_mode}")
+                else:
+                    log(f"Erro ao iniciar navegador (headless=False): {e_mode}")
+
+        raise last_err
     except Exception as e:
         log(f"Erro ao iniciar navegador (tentativa 1, headless={headless_pref}): {e}")
 
         if headless_pref:
             try:
-                options = build_options(headless=False)
+                options = build_options(headless=False, headless_mode="new")
                 driver = uc.Chrome(
                     options=options,
                     headless=False,
                     driver_executable_path=ChromeDriverManager().install(),
                     browser_executable_path=browser_executable_path
                 )
+                try:
+                    driver.set_page_load_timeout(60)
+                    driver.set_script_timeout(60)
+                except Exception:
+                    pass
                 log("Navegador stealth iniciado (fallback não-headless)")
                 return driver
             except Exception as e2:
@@ -1058,6 +1098,8 @@ def amazon_scraper(driver):
 
     except Exception as e:
         print(f"[Erro no scraper] {e}")
+        if _is_webdriver_unreachable_error(e):
+            raise
         return []
 
 from time import sleep
@@ -1081,12 +1123,24 @@ def run_scraper():
 
     driver = init_driver(custom_tmp=custom_tmp)
 
+    restart_count = 0
+
     def _restart_driver():
-        nonlocal driver
+        nonlocal driver, restart_count
+        restart_count += 1
         try:
             driver.quit()
         except Exception:
             pass
+
+        # Escalate strategies across restarts:
+        # 1st restart: switch to old headless if using headless
+        # 2nd+ restart: try non-headless (requires display/Xvfb)
+        if os.getenv("AMAZON_HEADLESS", "true").lower() == "true":
+            if restart_count == 1:
+                os.environ["AMAZON_HEADLESS_MODE"] = "old"
+            elif restart_count >= 2:
+                os.environ["AMAZON_HEADLESS"] = "false"
         driver = init_driver(custom_tmp=custom_tmp)
     try:
         print("🔄 Iniciando coleta de links de ofertas de todas as categorias...")
