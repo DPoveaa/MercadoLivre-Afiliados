@@ -37,10 +37,13 @@ def log(message):
 
 from whatsapp.wpp_connect import (
     wpp_send_message,
-    wpp_check_connection_state
+    wpp_check_connection_state,
+    wpp_wait_until_connected
 )
+from whatsapp.destinations import load_whatsapp_destinations
 
-sys.stdout.reconfigure(line_buffering=True)
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
 
 # Verifica se está em modo de teste
 TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
@@ -178,19 +181,7 @@ sent_promotions = load_promo_history()
 
 
 def _load_whatsapp_destinations():
-    test = os.getenv("TEST_MODE", "false").lower() == "true"
-    destinations = []
-    if test:
-        groups = os.getenv("WHATSAPP_GROUPS_TESTE", "")
-        channels = os.getenv("WHATSAPP_CHANNELS_TESTE", "")
-    else:
-        groups = os.getenv("WHATSAPP_GROUPS", "")
-        channels = os.getenv("WHATSAPP_CHANNELS", "")
-    if groups:
-        destinations.extend([g.strip() for g in groups.split(",") if g.strip()])
-    if channels:
-        destinations.extend([c.strip() for c in channels.split(",") if c.strip()])
-    return destinations
+    return load_whatsapp_destinations()
 
 
 
@@ -627,17 +618,10 @@ def get_product_details(driver, url, max_retries=3):
 def check_promotions():
     log("Iniciando verificação de promoções...")
     
-    # Verifica status do WhatsApp apenas para log, sem travar o scraper
-    whatsapp_status = 'OFFLINE'
     if WHATSAPP_ENABLED:
-        try:
-            whatsapp_status = wpp_check_connection_state()
-            if whatsapp_status == 'CONNECTED':
-                log("✅ WhatsApp pronto.")
-            else:
-                log(f"⚠️ WhatsApp status: {whatsapp_status}. Tentando enviar mesmo assim.")
-        except:
-            log("⚠️ Falha ao verificar status do WhatsApp. Prosseguindo com a coleta.")
+        # Se WhatsApp estiver habilitado, não faz scraping até garantir que o WPP está ONLINE.
+        if not wpp_wait_until_connected():
+            return
     
     driver = None
     try:

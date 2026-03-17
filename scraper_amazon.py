@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import time
+import json
 import os
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -24,8 +25,10 @@ from collections import deque
 import sys
 from whatsapp.wpp_connect import (
     wpp_send_message,
-    wpp_check_connection_state
+    wpp_check_connection_state,
+    wpp_wait_until_connected
 )
+from whatsapp.destinations import load_whatsapp_destinations
 import tempfile
 
 # Verifica se está em modo de teste
@@ -509,8 +512,7 @@ def send_telegram_message(products, driver, sent_products):
             # Envia para WhatsApp se habilitado
             if WHATSAPP_ENABLED:
                 try:
-                    from scraper_ml import _load_whatsapp_destinations
-                    destinations = _load_whatsapp_destinations()
+                    destinations = load_whatsapp_destinations()
                     whatsapp_success = wpp_send_message(
                         destinations=destinations,
                         message=message,
@@ -929,6 +931,11 @@ from time import sleep
 def run_scraper():
     """Função principal que executa o scraper."""
     print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Iniciando execução do scraper...")
+
+    # Se WhatsApp estiver habilitado, não faz scraping até garantir que o WPP está ONLINE.
+    if WHATSAPP_ENABLED:
+        if not wpp_wait_until_connected():
+            return
 
     # Definir diretório temporário customizado para Chrome/Chromedriver
     custom_tmp = tempfile.mkdtemp(prefix='chrome_tmp_')

@@ -96,9 +96,11 @@ def wpp_check_connection_state():
 
                 # Tenta extrair o estado de vários campos possíveis
                 state = str(data.get("state") or data.get("internalStatus") or data.get("sessionStatus") or "").upper()
-                is_ready = data.get("isReady") is True or data.get("status") in ("success", "ok")
+                # "status" (success/ok) means the HTTP endpoint responded, not that WhatsApp is connected.
+                is_ready = data.get("isReady") is True
 
-                valid_states = ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING", "MAIN", "NORMAL", "QRCODE")
+                # Treat only "connected-like" states as ready. STARTING/SYNCING are not ready for sending.
+                valid_states = ("CONNECTED", "INCHAT", "ISLOGGED", "MAIN", "NORMAL", "QRCODE")
                 if state in valid_states or is_ready:
                     if state == "QRCODE":
                         return "QRCODE"
@@ -112,6 +114,45 @@ def wpp_check_connection_state():
                 _debug(f"Status check failed via {url}: {e}")
                 continue
     return 'OFFLINE'
+
+
+def wpp_wait_until_connected():
+    """
+    Blocks until WPPConnect is CONNECTED (when WhatsApp delivery is required).
+
+    Env knobs:
+    - WPP_WAIT_INTERVAL_SECONDS (default: 10)
+    - WPP_WAIT_TIMEOUT_SECONDS  (default: 0 => infinite)
+    """
+    try:
+        interval = int(os.getenv("WPP_WAIT_INTERVAL_SECONDS", "10"))
+    except Exception:
+        interval = 10
+    if interval <= 0:
+        interval = 10
+
+    try:
+        timeout = int(os.getenv("WPP_WAIT_TIMEOUT_SECONDS", "0"))
+    except Exception:
+        timeout = 0
+
+    started = time.time()
+    attempts = 0
+
+    while True:
+        attempts += 1
+        state = wpp_check_connection_state()
+        if state == "CONNECTED":
+            if attempts > 1:
+                log("✅ WhatsApp conectado. Continuando.")
+            return True
+
+        log(f"⚠️ WhatsApp não está pronto (state={state}). Tentando novamente em {interval}s...")
+        if timeout > 0 and (time.time() - started) >= timeout:
+            log(f"❌ Timeout esperando WhatsApp conectar (state={state}).")
+            return False
+
+        time.sleep(interval)
 
 def wpp_send_message(destinations, message, image_url=None):
     """

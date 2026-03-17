@@ -2,7 +2,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from datetime import datetime, timedelta
+import json
 import os
+import random
+import re
+import schedule
+import sys
+import time
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -15,14 +21,17 @@ from webdriver_manager.chrome import ChromeDriverManager
 from Telegram.tl_enviar import send_telegram_message
 from whatsapp.wpp_connect import (
     wpp_send_message,
-    wpp_check_connection_state
+    wpp_check_connection_state,
+    wpp_wait_until_connected
 )
+from whatsapp.destinations import load_whatsapp_destinations
 import platform
 import requests
 import subprocess
 from collections import deque
 
-sys.stdout.reconfigure(line_buffering=True)
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
 
 # Verifica se está em modo de teste
 TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
@@ -719,17 +728,10 @@ def check_promotions():
     """Função principal que verifica e envia promoções"""
     log("Iniciando verificação de promoções da Kabum...")
     
-    # Verifica status do WhatsApp apenas para log, sem travar o scraper
-    whatsapp_status = 'OFFLINE'
     if WHATSAPP_ENABLED:
-        try:
-            whatsapp_status = wpp_check_connection_state()
-            if whatsapp_status == 'CONNECTED':
-                log("✅ WhatsApp pronto.")
-            else:
-                log(f"⚠️ WhatsApp status: {whatsapp_status}. Tentando enviar mesmo assim.")
-        except:
-            log("⚠️ Falha ao verificar status do WhatsApp. Prosseguindo.")
+        # Se WhatsApp estiver habilitado, não faz scraping até garantir que o WPP está ONLINE.
+        if not wpp_wait_until_connected():
+            return
 
     driver = None
     try:
@@ -830,8 +832,7 @@ def check_promotions():
                 whatsapp_success = False
                 if WHATSAPP_ENABLED:
                     try:
-                        from scraper_ml import _load_whatsapp_destinations
-                        destinations = _load_whatsapp_destinations()
+                        destinations = load_whatsapp_destinations()
                         whatsapp_success = wpp_send_message(
                             destinations=destinations,
                             message=message,
