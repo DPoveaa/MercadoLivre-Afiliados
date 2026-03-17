@@ -806,8 +806,9 @@ def check_promotions():
                 continue
             if not product.get('name'):
                 dados_faltando.append('nome')
-            if not (product.get('old_price') or product.get('discount_price') or product.get('pix_price')):
-                dados_faltando.append('valores')
+            # "Por apenas" is mandatory: do not send if we couldn't extract a current price.
+            if not (product.get('discount_price') or product.get('pix_price')):
+                dados_faltando.append('por_apenas')
             if not product.get('card_info'):
                 dados_faltando.append('parcelamento')
             if not product.get('affiliate_url'):

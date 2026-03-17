@@ -81,6 +81,20 @@ FORCE_RUN_ON_START = os.getenv("FORCE_RUN_ON_START", "false").lower() == "true"
 SIMILARITY_THRESHOLD = 0.95  # Limiar de similaridade mais restritivo
 MAX_HISTORY_SIZE = 150  # Mantém as últimas promoções
 
+def _is_webdriver_unreachable_error(e: Exception) -> bool:
+    msg = repr(e)
+    # Selenium/urllib3 failures when chromedriver becomes unresponsive.
+    needles = [
+        "HTTPConnectionPool(host='localhost'",
+        "Read timed out",
+        "Max retries exceeded with url: /session",
+        "chrome not reachable",
+        "cannot connect to chrome",
+        "Connection refused",
+        "Remote end closed connection",
+    ]
+    return any(n in msg for n in needles)
+
 # Driver init aligned with scraper_ml: headless by default, with safe fallback.
 def init_driver(custom_tmp: str = None):
     """
@@ -939,7 +953,13 @@ def generate_affiliate_links(driver, product_links):
 
         except Exception as e:
             print(f"Erro crítico: {str(e)}")
-            driver.save_screenshot(f"erro_critico_{url.split('/')[-1]}.png")
+            # If chromedriver is dead/unreachable, bubble up so run_scraper can restart it.
+            if _is_webdriver_unreachable_error(e):
+                raise
+            try:
+                driver.save_screenshot(f"erro_critico_{url.split('/')[-1]}.png")
+            except Exception:
+                pass
 
     return product_data
 
@@ -999,6 +1019,8 @@ def amazon_scraper(driver):
                 
             except Exception as e:
                 log(f"Erro ao processar categoria {category['name']}: {e}")
+                if _is_webdriver_unreachable_error(e):
+                    raise
                 continue
         
         log(f"Pegando até {products_per_category} produtos por categoria")
@@ -1058,9 +1080,25 @@ def run_scraper():
     os.environ['TMP'] = custom_tmp
 
     driver = init_driver(custom_tmp=custom_tmp)
+
+    def _restart_driver():
+        nonlocal driver
+        try:
+            driver.quit()
+        except Exception:
+            pass
+        driver = init_driver(custom_tmp=custom_tmp)
     try:
         print("🔄 Iniciando coleta de links de ofertas de todas as categorias...")
-        deal_links = amazon_scraper(driver)
+        try:
+            deal_links = amazon_scraper(driver)
+        except Exception as e:
+            if _is_webdriver_unreachable_error(e):
+                log("WebDriver ficou indisponível. Reiniciando e tentando novamente...")
+                _restart_driver()
+                deal_links = amazon_scraper(driver)
+            else:
+                raise
         print(f"✅ Links coletados: {len(deal_links)}")
 
         if not deal_links:
@@ -1068,7 +1106,15 @@ def run_scraper():
             return
 
         print("🔄 Gerando links de afiliados e coletando dados dos produtos...")
-        products_data = generate_affiliate_links(driver, deal_links)
+        try:
+            products_data = generate_affiliate_links(driver, deal_links)
+        except Exception as e:
+            if _is_webdriver_unreachable_error(e):
+                log("WebDriver ficou indisponível durante geração de links. Reiniciando e tentando novamente...")
+                _restart_driver()
+                products_data = generate_affiliate_links(driver, deal_links)
+            else:
+                raise
         print(f"✅ Dados de {len(products_data)} produtos coletados com sucesso")
 
         if not products_data:
