@@ -15,39 +15,102 @@ def log(message):
 def _wpp_headers():
     return {"Content-Type": "application/json"}
 
+_HTTP = requests.Session()
+# Avoid surprises with HTTP_PROXY/HTTPS_PROXY in cron/docker environments.
+_HTTP.trust_env = False
+
+def _normalize_base_url(url: str) -> str:
+    url = (url or "").strip().rstrip("/")
+    # Some users set WPP_BASE_URL ending with /api; our callers add /api/... already.
+    if url.lower().endswith("/api"):
+        url = url[:-4]
+    return url.rstrip("/")
+
+def _candidate_base_urls() -> list:
+    """
+    Returns base URLs to try in order.
+
+    Notes:
+    - In Docker, "localhost" points to the container itself, not the host.
+    - requests may try to use a proxy from env; we disable that via _HTTP.trust_env=False.
+    """
+    candidates = []
+
+    def add(u: str):
+        u = _normalize_base_url(u)
+        if not u:
+            return
+        if u not in candidates:
+            candidates.append(u)
+
+    add(os.getenv("WPP_BASE_URL", "http://localhost:21465"))
+
+    # Optional: comma-separated extra base URLs (useful for Docker/WSL).
+    extra = os.getenv("WPP_BASE_URLS", "")
+    for part in (p.strip() for p in extra.split(",")):
+        add(part)
+
+    # Common fallbacks for "works on host but not in container".
+    add("http://127.0.0.1:21465")
+    add("http://localhost:21465")
+    add("http://host.docker.internal:21465")
+    add("http://172.17.0.1:21465")
+
+    return candidates
+
+def _wpp_debug_enabled() -> bool:
+    return os.getenv("WPP_DEBUG", "false").lower() == "true"
+
+def _debug(msg: str):
+    if _wpp_debug_enabled():
+        log(msg)
+
 def wpp_check_connection_state():
     """
     Verifica o status do WhatsApp via API HTTP.
     Retorna 'CONNECTED' se estiver ok, ou o estado retornado pela API.
     """
-    base_url = os.getenv("WPP_BASE_URL", "http://localhost:21465").rstrip('/')
     session = os.getenv("WPP_SESSION", "default")
-    
-    # Tenta com e sem sessão para garantir compatibilidade
-    urls = [
-        f"{base_url}/api/{session}/status",
-        f"{base_url}/api/status",
-        f"{base_url}/health",
-        f"http://127.0.0.1:21465/api/{session}/status"
+
+    # Try cheap/compatible endpoints first.
+    paths = [
+        "/health",
+        f"/api/{session}/status",
+        "/api/status",
     ]
-    
-    for url in urls:
-        try:
-            r = requests.get(url, headers=_wpp_headers(), timeout=10)
-            if r.status_code == 200:
-                data = r.json()
+
+    for base_url in _candidate_base_urls():
+        for path in paths:
+            url = f"{base_url}{path}"
+            try:
+                r = _HTTP.get(url, headers=_wpp_headers(), timeout=5, allow_redirects=True)
+                if r.status_code != 200:
+                    _debug(f"Status check non-200 via {url}: {r.status_code}")
+                    continue
+
+                try:
+                    data = r.json()
+                except Exception:
+                    _debug(f"Status check non-JSON via {url}")
+                    return "CONNECTED"
+
                 # Tenta extrair o estado de vários campos possíveis
                 state = str(data.get("state") or data.get("internalStatus") or data.get("sessionStatus") or "").upper()
-                is_ready = data.get("isReady") is True or data.get("status") == "success"
-                
+                is_ready = data.get("isReady") is True or data.get("status") in ("success", "ok")
+
                 valid_states = ("CONNECTED", "INCHAT", "ISLOGGED", "SYNCING", "STARTING", "MAIN", "NORMAL", "QRCODE")
                 if state in valid_states or is_ready:
                     if state == "QRCODE":
                         return "QRCODE"
-                    return 'CONNECTED'
-                return state
-        except:
-            continue
+                    return "CONNECTED"
+
+                if state:
+                    return state
+
+                _debug(f"Status check empty-state via {url}: {str(data)[:200]}")
+            except Exception as e:
+                _debug(f"Status check failed via {url}: {e}")
+                continue
     return 'OFFLINE'
 
 def wpp_send_message(destinations, message, image_url=None):
@@ -57,9 +120,7 @@ def wpp_send_message(destinations, message, image_url=None):
     if not destinations:
         log("Nenhum destino fornecido para envio.")
         return False
-    
-    # Normaliza a URL base removendo barras finais
-    base_url = os.getenv("WPP_BASE_URL", "http://localhost:21465").rstrip('/')
+
     session = os.getenv("WPP_SESSION", "default")
     
     if not session:
@@ -79,9 +140,18 @@ def wpp_send_message(destinations, message, image_url=None):
                 url_path = f"/api/{session}/send-message"
                 payload = {"message": message}
 
-            # Define o destinatário
+            dest = (dest or "").strip()
+            if not dest:
+                continue
+
+            # Define o destinatário:
+            # - grupos: use groupId (ex: 120...@g.us)
+            # - destinos com '@' (ex: canais/newsletter): mande como "phone" sem mutilar o sufixo
+            # - telefones: extrai apenas dígitos
             if "@g.us" in dest:
-                payload.update({"groupId": dest.strip()})
+                payload.update({"groupId": dest})
+            elif "@" in dest:
+                payload.update({"phone": dest})
             else:
                 phone = "".join(filter(str.isdigit, dest))
                 if phone:
@@ -90,35 +160,26 @@ def wpp_send_message(destinations, message, image_url=None):
                     log(f"⚠️ Destino inválido ignorado: {dest}")
                     continue
 
-            # Tenta envio principal
-            url = f"{base_url}{url_path}"
-            log(f"Enviando para {dest} via {url}...")
-            
-            try:
-                r = requests.post(url, headers=_wpp_headers(), json=payload, timeout=45)
-                
-                if r.status_code == 200:
-                    success_count += 1
-                    log(f"✅ Sucesso ao enviar para {dest}")
-                    continue
-                else:
-                    log(f"❌ Falha ao enviar para {dest} (Status {r.status_code}): {r.text[:100]}")
-            except requests.exceptions.RequestException as e:
-                log(f"⚠️ Erro de rede na tentativa 1 para {dest}: {e}")
-
-            # Fallback para 127.0.0.1 se falhar ou se o host for localhost
-            if "localhost" in base_url or "127.0.0.1" not in base_url:
-                url_alt = f"http://127.0.0.1:21465{url_path}"
-                log(f"Tentando fallback para {url_alt}...")
+            sent = False
+            last_err = None
+            for base_url in _candidate_base_urls():
+                url = f"{base_url}{url_path}"
+                log(f"Enviando para {dest} via {url}...")
                 try:
-                    r_alt = requests.post(url_alt, headers=_wpp_headers(), json=payload, timeout=45)
-                    if r_alt.status_code == 200:
+                    r = _HTTP.post(url, headers=_wpp_headers(), json=payload, timeout=45)
+                    if r.status_code == 200:
                         success_count += 1
-                        log(f"✅ Sucesso no fallback para {dest}")
-                    else:
-                        log(f"❌ Falha no fallback para {dest} (Status {r_alt.status_code})")
-                except requests.exceptions.RequestException as e_alt:
-                    log(f"❌ Erro de rede no fallback para {dest}: {e_alt}")
+                        log(f"✅ Sucesso ao enviar para {dest}")
+                        sent = True
+                        break
+                    last_err = f"HTTP {r.status_code}: {r.text[:200]}"
+                    _debug(f"Send failed via {url}: {last_err}")
+                except requests.exceptions.RequestException as e:
+                    last_err = str(e)
+                    _debug(f"Send network error via {url}: {e}")
+
+            if not sent and last_err:
+                log(f"❌ Falha ao enviar para {dest}: {last_err[:200]}")
 
         except Exception as e:
             log(f"🚨 Erro inesperado ao processar envio para {dest}: {e}")

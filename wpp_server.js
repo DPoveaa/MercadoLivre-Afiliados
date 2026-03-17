@@ -320,6 +320,22 @@ app.get('/api/:session/check-connection-state', (req, res) => {
     res.json({ status: 'success', state: status });
 });
 
+// Some clients probe /api-docs expecting Swagger. We don't ship Swagger here,
+// but returning 200 avoids false alarms while still guiding to the real endpoints.
+app.get('/api-docs', (req, res) => {
+    res.json({
+        status: 'ok',
+        message: 'Swagger is not enabled on this server. Use /health or /api/:session/status.',
+        endpoints: [
+            '/health',
+            '/api/:session/status',
+            '/api/:session/send-message',
+            '/api/:session/send-file',
+            '/api/:session/check-connection-state'
+        ]
+    });
+});
+
 // Rota de saúde simples
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', server: 'WPPConnect Bridge', session: SESSION_NAME, state: status });
