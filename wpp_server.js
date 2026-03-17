@@ -10,10 +10,16 @@ require('dotenv').config();
 const app = express();
 app.use(bodyParser.json());
 
+// Middleware para logar todas as requisições
+app.use((req, res, next) => {
+    log('DEBUG', `${req.method} ${req.url}`);
+    next();
+});
+
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 21465;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const ADMIN_CHAT_IDS = process.env.ADMIN_CHAT_IDS ? process.env.ADMIN_CHAT_IDS.split(',').map(id => id.trim()) : [];
-const SESSION_NAME = 'default';
+const SESSION_NAME = process.env.WPP_SESSION || 'default';
 
 let client = null;
 let currentQr = null;
@@ -229,8 +235,8 @@ async function initializeClient() {
 
 // Endpoints API REST
 
-app.get('/api/status', async (req, res) => {
-    log('DEBUG', `Requisição de status recebida. Status interno: ${status}`);
+app.get('/api/:session/status', async (req, res) => {
+    log('DEBUG', `Requisição de status recebida para sessão: ${req.params.session}. Status interno: ${status}`);
     let extra = {};
     if (client && status === 'CONNECTED') {
         try {
@@ -246,7 +252,7 @@ app.get('/api/status', async (req, res) => {
     res.json({
         status: 'success',
         session: SESSION_NAME,
-        state: status, // Adicionado 'state' para compatibilidade direta
+        state: status,
         internalStatus: status,
         starting: starting,
         hasQr: !!currentQr,
@@ -254,8 +260,13 @@ app.get('/api/status', async (req, res) => {
     });
 });
 
-app.post('/api/send-message', async (req, res) => {
-    log('DEBUG', `Recebida solicitação de envio. Status atual: ${status}`);
+// Fallback para status sem sessão (compatibilidade)
+app.get('/api/status', (req, res) => {
+    res.redirect(`/api/${SESSION_NAME}/status`);
+});
+
+app.post('/api/:session/send-message', async (req, res) => {
+    log('DEBUG', `Recebida solicitação de envio para sessão: ${req.params.session}. Status atual: ${status}`);
     
     if (status !== 'CONNECTED' || !client) {
         log('WARN', `Tentativa de envio sem conexão. Status: ${status}`);
@@ -281,7 +292,7 @@ app.post('/api/send-message', async (req, res) => {
     }
 });
 
-app.post('/api/send-file', async (req, res) => {
+app.post('/api/:session/send-file', async (req, res) => {
     if (status !== 'CONNECTED' || !client) {
         return res.status(400).json({ 
             status: 'error', 
@@ -307,6 +318,21 @@ app.post('/api/send-file', async (req, res) => {
 
 app.get('/api/:session/check-connection-state', (req, res) => {
     res.json({ status: 'success', state: status });
+});
+
+// Rota de saúde simples
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', server: 'WPPConnect Bridge', session: SESSION_NAME, state: status });
+});
+
+app.get('/', (req, res) => {
+    res.redirect('/health');
+});
+
+// Middleware para capturar 404
+app.use((req, res) => {
+    log('WARN', `Rota não encontrada: ${req.method} ${req.url}`);
+    res.status(404).json({ status: 'error', message: 'Rota não encontrada' });
 });
 
 // Inicialização
