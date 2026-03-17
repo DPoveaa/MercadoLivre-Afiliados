@@ -29,6 +29,11 @@ _PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 if _PROJECT_DIR not in sys.path:
     sys.path.insert(0, _PROJECT_DIR)
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(line_buffering=True)
+
 from whatsapp.wpp_connect import (
     wpp_send_message,
     wpp_check_connection_state,
@@ -159,7 +164,7 @@ def get_rotated_category_urls():
 def log(message):
     """Função para logging com timestamp"""
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] {message}")
+    print(f"[{timestamp}] {message}", flush=True)
 
 def normalize_name(name):
     """Normaliza o nome removendo acentos, caixa e espaços extras."""

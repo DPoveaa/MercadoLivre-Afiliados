@@ -9,6 +9,7 @@ import re
 import schedule
 import sys
 import time
+import urllib.parse
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -38,6 +39,8 @@ from collections import deque
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(line_buffering=True)
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(line_buffering=True)
 
 # Verifica se está em modo de teste
 TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
