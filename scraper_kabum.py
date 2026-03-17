@@ -894,14 +894,25 @@ def schedule_scraper():
     # Executa imediatamente se FORCE_RUN_ON_START estiver ativado
     if FORCE_RUN_ON_START:
         log("Execução imediata forçada pelo .env")
-        check_promotions()
+        try:
+            check_promotions()
+        except KeyboardInterrupt:
+            log("Encerrando o scraper...")
+            return
 
     log("Scraper da Kabum agendado para executar todo dia nos minutos 15 de cada hora")
 
     # Loop infinito para garantir que o agendamento continue rodando
     while True:
-        schedule.run_pending()
-        time.sleep(10)
+        try:
+            schedule.run_pending()
+            time.sleep(10)
+        except KeyboardInterrupt:
+            log("Encerrando o scraper...")
+            break
+        except Exception as e:
+            log(f"Erro no agendamento: {e}")
+            time.sleep(10)
 
 
 

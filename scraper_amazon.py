@@ -1060,13 +1060,21 @@ def schedule_scraper():
     
     if TEST_MODE:
         print("Modo de teste ativado - Executando imediatamente e a cada hora")
-        run_scraper()
+        try:
+            run_scraper()
+        except KeyboardInterrupt:
+            print("\nEncerrando o scraper...")
+            return
         schedule.every(1).hours.do(run_scraper)
     else:
-                # Executa imediatamente se forçado
+        # Executa imediatamente se forçado
         if FORCE_RUN_ON_START:
             print("Execução imediata forçada pelo .env")
-            run_scraper()
+            try:
+                run_scraper()
+            except KeyboardInterrupt:
+                print("\nEncerrando o scraper...")
+                return
         print("Modo normal - Agendando para horarios com final 00")
         # Agenda para executar a cada hora, começando às 12:00
         schedule.every().day.at("12:00").do(run_scraper)
