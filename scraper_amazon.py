@@ -17,8 +17,9 @@ import requests
 import re
 from datetime import datetime
 from difflib import SequenceMatcher
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 import unicodedata
+import platform
 
 import schedule
 import subprocess
@@ -61,6 +62,8 @@ GREEN_API_TOKEN = os.getenv("GREEN_API_TOKEN")
 # Admins para notificação de desconexão WhatsApp
 ADMIN_CHAT_IDS = os.getenv("ADMIN_CHAT_IDS", "").split(",") if os.getenv("ADMIN_CHAT_IDS") else []
 
+AMAZON_AFFILIATE_TAG = os.getenv("AMAZON_AFFILIATE_TAG", "4002892203d-20").strip()
+
 
 
 products_per_category = int(os.getenv("TOP_N_OFFERS_TESTE"))if TEST_MODE else int(os.getenv("TOP_N_OFFERS_AMAZON"))
@@ -95,114 +98,63 @@ def _is_webdriver_unreachable_error(e: Exception) -> bool:
     ]
     return any(n in msg for n in needles)
 
-# Driver init aligned with scraper_ml: headless by default, with safe fallback.
-def init_driver(custom_tmp: str = None):
-    """
-    Inicializa o Chrome em modo "stealth" (undetected-chromedriver).
-
-    Env knobs:
-    - AMAZON_HEADLESS=true|false (default: true)
-    """
+def init_driver(custom_tmp=None):
     log("Inicializando navegador com undetected-chromedriver...")
 
-    def build_options(headless: bool, headless_mode: str):
+    def build_options():
         opts = uc.ChromeOptions()
-        opts.add_argument("--no-sandbox")
-        opts.add_argument("--disable-dev-shm-usage")
-        opts.add_argument("--disable-blink-features=AutomationControlled")
-        opts.add_argument("--window-size=1920,1080")
-        opts.add_argument("--lang=pt-BR")
+        opts.add_argument("--headless=new")
+        opts.add_argument('--no-sandbox')
+        opts.add_argument('--disable-dev-shm-usage')
+        opts.add_argument('--disable-blink-features=AutomationControlled')
+        opts.add_argument('--window-size=1920,1080')
+        opts.add_argument('--lang=pt-BR')
         opts.add_argument(
-            "--user-agent=Mozilla/5.0 (X11; Linux x86_64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
+            '--user-agent=Mozilla/5.0 (X11; Linux x86_64) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/120.0.0.0 Safari/537.36'
         )
-        if headless:
-            # Some sites behave differently on "new" headless; keep a fallback to old headless.
-            if str(headless_mode).lower() == "old":
-                opts.add_argument("--headless")
-            else:
-                opts.add_argument("--headless=new")
         if custom_tmp:
-            opts.add_argument(f"--user-data-dir={custom_tmp}/user_data")
-            opts.add_argument(f"--disk-cache-dir={custom_tmp}/cache")
+            # Isola o perfil/cache para evitar conflitos entre execuções paralelas.
+            profile_dir = os.path.join(custom_tmp, "uc_profile")
+            opts.add_argument(f"--user-data-dir={profile_dir}")
         return opts
 
+    # Detecta Chrome no Linux
     browser_executable_path = None
-    if os.name != "nt":
-        if os.path.exists("/usr/bin/google-chrome"):
-            browser_executable_path = "/usr/bin/google-chrome"
-        elif os.path.exists("/usr/bin/chromium-browser"):
-            browser_executable_path = "/usr/bin/chromium-browser"
-        elif os.path.exists("/usr/bin/chromium"):
-            browser_executable_path = "/usr/bin/chromium"
-
-    headless_pref = os.getenv("AMAZON_HEADLESS", "true").lower() == "true"
-    headless_mode_pref = os.getenv("AMAZON_HEADLESS_MODE", "new").lower()  # new|old
+    if platform.system() == 'Linux':
+        if os.path.exists('/usr/bin/google-chrome'):
+            browser_executable_path = '/usr/bin/google-chrome'
+        elif os.path.exists('/usr/bin/chromium-browser'):
+            browser_executable_path = '/usr/bin/chromium-browser'
 
     try:
-        if headless_pref:
-            modes = [headless_mode_pref]
-            if headless_mode_pref != "old":
-                modes.append("old")
-            if headless_mode_pref != "new":
-                modes.append("new")
-        else:
-            modes = [None]
+        options = build_options()
+        driver = uc.Chrome(
+            options=options,
+            driver_executable_path=ChromeDriverManager().install(),
+            browser_executable_path=browser_executable_path
+        )
+        log("Navegador stealth iniciado")
+        return driver
 
-        last_err = None
-        for mode in modes:
-            try:
-                options = build_options(headless=headless_pref, headless_mode=mode or "new")
-                driver = uc.Chrome(
-                    options=options,
-                    driver_executable_path=ChromeDriverManager().install(),
-                    browser_executable_path=browser_executable_path
-                )
-                # Defensive timeouts: avoid indefinite hangs on navigation/scripts.
-                try:
-                    driver.set_page_load_timeout(60)
-                    driver.set_script_timeout(60)
-                except Exception:
-                    pass
-
-                if headless_pref:
-                    log(f"Navegador stealth iniciado (headless=True mode={mode or 'new'})")
-                else:
-                    log("Navegador stealth iniciado (headless=False)")
-                return driver
-            except Exception as e_mode:
-                last_err = e_mode
-                if headless_pref:
-                    log(f"Erro ao iniciar navegador (headless mode={mode}): {e_mode}")
-                else:
-                    log(f"Erro ao iniciar navegador (headless=False): {e_mode}")
-
-        raise last_err
     except Exception as e:
-        log(f"Erro ao iniciar navegador (tentativa 1, headless={headless_pref}): {e}")
+        log(f"Erro ao iniciar o navegador (tentativa 1): {e}")
 
-        if headless_pref:
-            try:
-                options = build_options(headless=False, headless_mode="new")
-                driver = uc.Chrome(
-                    options=options,
-                    headless=False,
-                    driver_executable_path=ChromeDriverManager().install(),
-                    browser_executable_path=browser_executable_path
-                )
-                try:
-                    driver.set_page_load_timeout(60)
-                    driver.set_script_timeout(60)
-                except Exception:
-                    pass
-                log("Navegador stealth iniciado (fallback não-headless)")
-                return driver
-            except Exception as e2:
-                log(f"Erro fatal ao iniciar navegador (fallback não-headless): {e2}")
-                raise
+        # ⚠️ Nova instância de options (NUNCA reutilizar)
+        try:
+            options = build_options()
+            driver = uc.Chrome(
+                options=options,
+                headless=False,
+                driver_executable_path=ChromeDriverManager().install()
+            )
+            log("Navegador stealth iniciado (fallback)")
+            return driver
 
-        raise
+        except Exception as e2:
+            log(f"Erro fatal ao iniciar navegador: {e2}")
+            raise
 
 # Lista de categorias para capturar ofertas
 AMAZON_CATEGORIES = [
@@ -740,40 +692,44 @@ def generate_affiliate_links(driver, product_links):
     """Gera links de afiliados e coleta dados do produto"""
     product_data = []
 
-    def _collect_amazon_shortlink():
-        """
-        Collects the short affiliate link via Amazon SiteStripe.
-
-        Expected elements (pt-BR UI):
-        - button#amzn-ss-get-link-button
-        - textarea#amzn-ss-text-shortlink-textarea
-        """
-        # Ensure top bar is reachable
-        driver.execute_script("window.scrollTo(0, 0);")
-
-        # Wait for SiteStripe button; if click is intercepted, fall back to JS click.
-        btn = WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "button#amzn-ss-get-link-button"))
-        )
+    def _extract_asin(url: str):
+        # Common patterns: /dp/ASIN, /gp/product/ASIN, or query param pd_rd_i=ASIN
+        m = re.search(r"/dp/([A-Z0-9]{10})(?:[/?]|$)", url)
+        if m:
+            return m.group(1)
+        m = re.search(r"/gp/product/([A-Z0-9]{10})(?:[/?]|$)", url)
+        if m:
+            return m.group(1)
         try:
-            WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button#amzn-ss-get-link-button")))
-            btn.click()
+            q = parse_qs(urlparse(url).query)
+            if "pd_rd_i" in q and q["pd_rd_i"]:
+                cand = q["pd_rd_i"][0]
+                if re.fullmatch(r"[A-Z0-9]{10}", cand):
+                    return cand
         except Exception:
-            driver.execute_script("arguments[0].click();", btn)
+            pass
+        return None
 
-        textarea = WebDriverWait(driver, 25).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "#amzn-ss-text-shortlink-textarea"))
-        )
+    def _build_affiliate_link(product_url: str) -> str:
+        """
+        Gera um link de afiliado direto (curto e limpo) apenas com o link do produto.
+        Ex.: https://www.amazon.com.br/dp/ASIN?tag=SEU_TAG
+        """
+        if not AMAZON_AFFILIATE_TAG:
+            return product_url
 
-        def _read_value():
-            v = (textarea.get_attribute("value") or "").strip()
-            if v:
-                return v
-            t = (textarea.text or "").strip()
-            return t
+        asin = _extract_asin(product_url)
+        parsed = urlparse(product_url)
+        base = f"{parsed.scheme or 'https'}://{parsed.netloc or 'www.amazon.com.br'}"
 
-        WebDriverWait(driver, 20).until(lambda d: "amzn.to/" in _read_value())
-        return _read_value()
+        if asin:
+            return f"{base}/dp/{asin}?tag={AMAZON_AFFILIATE_TAG}"
+
+        # Fallback: preserva caminho e troca/insere tag
+        q = parse_qs(parsed.query)
+        q["tag"] = [AMAZON_AFFILIATE_TAG]
+        new_query = urlencode(q, doseq=True)
+        return urlunparse((parsed.scheme or "https", parsed.netloc, parsed.path, "", new_query, ""))
 
     for url_info in product_links:
         url = url_info['link']
@@ -849,16 +805,13 @@ def generate_affiliate_links(driver, product_links):
 
             # 3. COLETA LINK AFILIADO (OBRIGATÓRIO)
             try:
-                product_info['link'] = _collect_amazon_shortlink()
+                product_info['link'] = _build_affiliate_link(url)
             except Exception as e:
                 # str(e) for selenium timeouts often becomes just "Message:"; add context
                 try:
-                    has_btn = len(driver.find_elements(By.CSS_SELECTOR, "button#amzn-ss-get-link-button")) > 0
-                    has_textarea = len(driver.find_elements(By.CSS_SELECTOR, "#amzn-ss-text-shortlink-textarea")) > 0
                     print(
                         "Erro no link afiliado: "
-                        f"{repr(e)} | url={driver.current_url} | title={driver.title} | "
-                        f"has_btn={has_btn} has_textarea={has_textarea}"
+                        f"{repr(e)} | url={driver.current_url} | title={driver.title}"
                     )
                 except Exception:
                     print(f"Erro no link afiliado: {repr(e)}")
