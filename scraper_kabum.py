@@ -689,7 +689,7 @@ def format_telegram_message(product):
         message += f"💥 Por apenas: R$ {pix_price:.2f} (no PIX)\n"
 
     # Link do produto (afiliado)
-    message += (f"👉 Clique aqui e garanta: {product['affiliate_url']}")
+    message += (f"\n👉 Clique aqui e garanta: {product['affiliate_url']}")
 
     return message
 
