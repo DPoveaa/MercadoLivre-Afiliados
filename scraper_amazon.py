@@ -68,15 +68,17 @@ AMAZON_AFFILIATE_TAG = os.getenv("AMAZON_AFFILIATE_TAG", "4002892203d-20").strip
 
 products_per_category = int(os.getenv("TOP_N_OFFERS_TESTE"))if TEST_MODE else int(os.getenv("TOP_N_OFFERS_AMAZON"))
 
-# Load cookies from environment variable
+# Load cookies from environment variable (optional)
 COOKIES_JSON = os.getenv('AMAZON_COOKIES')
-if not COOKIES_JSON:
-    raise ValueError("AMAZON_COOKIES environment variable not found in .env file")
-
-try:
-    COOKIES = json.loads(COOKIES_JSON)
-except json.JSONDecodeError as e:
-    raise ValueError(f"Invalid JSON in AMAZON_COOKIES: {e}")
+COOKIES = []
+if COOKIES_JSON:
+    try:
+        COOKIES = json.loads(COOKIES_JSON)
+    except json.JSONDecodeError as e:
+        print(f"AMAZON_COOKIES invÃ¡lido, continuando sem cookies: {e}")
+        COOKIES = []
+else:
+    print("AMAZON_COOKIES nÃ£o definido, continuando sem cookies.")
 
 FORCE_RUN_ON_START = os.getenv("FORCE_RUN_ON_START", "false").lower() == "true"
 
@@ -644,30 +646,7 @@ def format_amazon_message(product):
         message_lines.append("")
     message_lines.append(f"💥 Por apenas: {product['valor_desconto']}")
     message_lines.append("")
-    if product.get('parcelamento'):
-        try:
-            message_lines.append("💳 Parcelamentos:")
-            padrao1 = re.search(r'(\d+)x de R\$\s*([\d,]+)\s*(.*)', product['parcelamento'])
-            padrao2 = re.search(r'(\d+)x\s*(.*)', product['parcelamento'])
-            padrao3 = re.search(r'.*(\d+)x.*sem juros', product['parcelamento'])
-            if padrao1:
-                qtd_parcelas = padrao1.group(1)
-                valor_parcela = f"R$ {padrao1.group(2)}"
-                status_juros = padrao1.group(3).replace("com acréscimo", "com juros")
-                message_lines.append(f"- Em até {qtd_parcelas}x {valor_parcela} {status_juros}".strip())
-            elif padrao2:
-                qtd_parcelas = padrao2.group(1)
-                status_juros = padrao2.group(2).replace("com acréscimo", "com juros")
-                message_lines.append(f"- Em até {qtd_parcelas}x {status_juros}".strip())
-            elif padrao3:
-                qtd_parcelas = padrao3.group(1)
-                message_lines.append(f"- Em até {qtd_parcelas}x sem juros")
-            else:
-                message_lines.append("- Parcelamento disponível (ver detalhes)")
-            message_lines.append("")
-        except Exception as e:
-            message_lines.append("- Condições de parcelamento no site")
-            message_lines.append("")
+
     message_lines.append("🛒 Garanta agora:")
     message_lines.append(f"🔗 {product['link']}")
     message = "\n".join(message_lines)
@@ -742,7 +721,6 @@ def generate_affiliate_links(driver, product_links):
             'valor_original': None,
             'desconto_percentual': None,
             'avaliacao': None,
-            'parcelamento': None,
             'imagem': None,
             'categoria': category
         }
@@ -876,19 +854,6 @@ def generate_affiliate_links(driver, product_links):
                 product_info['avaliacao'] = f"{rating} ({review_count} avaliações)"
             except:
                 pass
-            try:
-                parcelamento_element = WebDriverWait(driver, 3).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "#installmentCalculator_feature_div span.best-offer-name"))
-                )
-                raw_text = parcelamento_element.text.strip()
-                
-                # Nova limpeza do texto
-                clean_text = raw_text.split('Ver')[0]  # Remove tudo após 'Ver'
-                clean_text = clean_text.replace('R$&nbsp;', '').replace('  ', ' ').strip()
-                
-                product_info['parcelamento'] = clean_text
-            except:
-                product_info['parcelamento'] = None
             try:
                 # Imagem - tenta múltiplos seletores para garantir captura
                 image_selectors = [
@@ -1263,3 +1228,5 @@ def schedule_scraper():
 
 if __name__ == "__main__":
     schedule_scraper()  
+
+

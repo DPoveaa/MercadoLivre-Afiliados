@@ -508,85 +508,7 @@ def get_product_details(driver, url, max_retries=3):
                 log(f"Erro ao extrair imagem: {e}")
                 image_url = None
 
-            # Parcelamento
-            installment_lines = []
-            try:
-                log("Extraindo parcelamento...")
-                # Tenta encontrar o botão/link de parcelamento por diferentes textos
-                pay_link_elem = None
-                # 1. "Ver os meios de pagamento"
-                try:
-                    pay_link_elem = driver.find_element(By.XPATH, "//a[contains(text(), 'Ver os meios de pagamento')]")
-                except Exception:
-                    pass
-                # 2. "Ver meios de pagamento e promoções"
-                if not pay_link_elem:
-                    try:
-                        pay_link_elem = driver.find_element(By.XPATH, "//a[contains(text(), 'Ver meios de pagamento e promoções')]")
-                    except Exception:
-                        pass
-                # 3. genérico pelo data-testid
-                if not pay_link_elem:
-                    try:
-                        pay_link_elem = driver.find_element(By.CSS_SELECTOR, "a.ui-pdp-action-modal__link[data-testid='action-modal-link']")
-                    except Exception:
-                        pass
-                if pay_link_elem:
-                    pay_link = pay_link_elem.get_attribute("href")
-                    driver.get(pay_link)
-                    WebDriverWait(driver, 10).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, ".ui-pdp-container__row--credit-card"))
-                    )
-                    container = driver.find_element(By.CSS_SELECTOR, ".ui-pdp-container__row--credit-card")
-                    titles = container.find_elements(By.CSS_SELECTOR, "p.ui-vip-payment_methods__title")
 
-                    found_others = False
-                    captured_others = False
-
-                    for title in titles:
-                        full_text = title.text.strip()
-                        lower = full_text.lower()
-
-                        if "mercado pago" in lower:
-                            label = "*Com Mercado Pago*"
-                        elif not captured_others:
-                            label = "*Outros cartões*"
-                            if "sem juros" in lower:
-                                found_others = True
-                                captured_others = True
-                            elif not found_others:
-                                captured_others = True
-                            else:
-                                continue
-                        else:
-                            continue
-
-                        info = (
-                            full_text
-                            .replace("Até ", "")
-                            .replace("com cartão Mercado Pago", "")
-                            .replace("com estes cartões", "")
-                            .replace("Ou até ", "")
-                            .replace("com acréscimo", "com juros")
-                            .strip()
-                        )
-
-                        installment_lines.append(f"- {label}: {info}")
-
-                    driver.back()
-                    time.sleep(1)
-                    log(f"Parcelamento extraído: {installment_lines}")
-                else:
-                    log("Nenhum botão de parcelamento encontrado.")
-            except Exception as e:
-                log(f"Erro ao coletar parcelamento diretamente: {e}")
-
-            installment_text = (
-                "💳 *Parcelamentos:*\n" + "\n".join(installment_lines)
-                if installment_lines else ""
-            )
-
-            # Monta mensagem final
             parts = [f"🟡 *Mercado Livre*", f"🏷️ *{product_title[:150]}*"]
             if promotion_type:
                 parts.append(
@@ -604,8 +526,6 @@ def get_product_details(driver, url, max_retries=3):
                 parts.append(f"💸 *De:* R$ {original_price}")
             if current_price and "não encontrado" not in current_price.lower():
                 parts.append(f"💥 *Por apenas:* R$ {current_price}")
-            if installment_text:
-                parts.append(installment_text)
             if coupon_message:
                 parts.append(coupon_message)
 
@@ -755,3 +675,4 @@ def schedule_scraper():
 
 if __name__ == "__main__":
     schedule_scraper()
+

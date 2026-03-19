@@ -423,30 +423,8 @@ def extract_product_details(driver, product_url):
         # Não buscar no parcelamento, pois é valor dividido
         discount_price = None
         # Caso queira buscar preço à vista no cartão, adicionar lógica aqui se houver elemento específico
-        
-        # 4. Informações de parcelamento
-        card_info = ""
-        try:
-            installment_container = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.w-full span.block.my-12")))
-            installment_text = installment_container.text.strip()
-            if installment_text:
-                # Limpa e formata o texto de parcelamento
-                lines = installment_text.split('\n')
-                formatted_lines = []
-                for line in lines:
-                    line = line.strip()
-                    if line:
-                        formatted_lines.append(line)
-                if formatted_lines:
-                    card_info = "\n- ".join(formatted_lines)
-                    if not card_info.startswith("-"):
-                        card_info = "- " + card_info
-                    log(f"Parcelamento encontrado: {card_info}")
-        except Exception as e:
-            log(f"Parcelamento não encontrado: {str(e)}")
-            card_info = ""
-        
-        # Avaliações
+
+ções
         rating = None
         rating_count = None
         rating_selectors = [
@@ -598,7 +576,6 @@ def extract_product_details(driver, product_url):
             'discount_price': discount_price,
             'pix_price': pix_price,
             'pix_discount_percent': pix_discount_percent,
-            'card_info': card_info,
             'rating': rating,
             'rating_count': rating_count,
             'image_url': image_url
@@ -642,24 +619,9 @@ def format_telegram_message(product):
     pix_price = product.get('pix_price')
     desconto_cartao = None
     desconto_pix = None
-    desconto_cartao_percent = None
     desconto_total = None
 
-    # Tenta extrair desconto do texto de parcelamento (ex: 'ou 1x com 9% de desconto  no cartão')
-    card_info = product.get('card_info')
-    desconto_cartao_text = None
-    if card_info:
-        import re
-        m = re.search(r'(\d+)% de desconto', card_info)
-        if m:
-            desconto_cartao_percent = int(m.group(1))
-            desconto_cartao_text = m.group(0)
 
-    # Se não houver preço antigo, usa o preço do cartão
-    if not old_price and discount_price:
-        old_price = discount_price
-
-    # Calcula descontos
     if old_price and discount_price:
         desconto_cartao = int(round(((old_price - discount_price) / old_price) * 100))
     if old_price and pix_price:
@@ -672,8 +634,6 @@ def format_telegram_message(product):
         desconto_total = desconto_pix
     elif desconto_cartao:
         desconto_total = desconto_cartao
-    elif desconto_cartao_percent:
-        desconto_total = desconto_cartao_percent
 
     if desconto_total:
         message += f"📉 Desconto de até {desconto_total}% OFF\n\n"
@@ -690,20 +650,7 @@ def format_telegram_message(product):
     elif pix_price:
         message += f"💥 Por apenas: R$ {pix_price:.2f} (no PIX)\n"
 
-    # Informações de cartão (formatadas)
-    if card_info:
-        message += f"\n💳 *Parcelamentos:*\n"
-        card_lines = card_info.split('\n')
-        for line in card_lines:
-            line = line.strip()
-            if line:
-                line = escape_markdown(line)
-                if not line.startswith('-'):
-                    message += f"- {line}\n"
-                else:
-                    message += f"{line}\n"
-
-    # Link do produto (afiliado)
+ (afiliado)
     message += f"\n🛒 *Garanta agora:*\n"
     message += f"🔗 {product['affiliate_url']}"
 
@@ -806,11 +753,12 @@ def check_promotions():
                 continue
             if not product.get('name'):
                 dados_faltando.append('nome')
+            # "De:" é obrigatório: não enviar se não houver preço original
+            if not product.get('old_price'):
+                dados_faltando.append('de')
             # "Por apenas" is mandatory: do not send if we couldn't extract a current price.
             if not (product.get('discount_price') or product.get('pix_price')):
                 dados_faltando.append('por_apenas')
-            if not product.get('card_info'):
-                dados_faltando.append('parcelamento')
             if not product.get('affiliate_url'):
                 dados_faltando.append('link')
             if dados_faltando:
@@ -929,3 +877,6 @@ if __name__ == "__main__":
     
     log("Iniciando scraper da Kabum...")
     schedule_scraper()
+
+
+
