@@ -743,7 +743,7 @@ def check_promotions():
             return
         
         if TEST_MODE:
-        log(f"Encontrados {len(product_links)} links para processar")
+            log(f"Encontrados {len(product_links)} links para processar")
         
         # Processa cada produto individualmente
         for i, product_url in enumerate(product_links):
