@@ -635,8 +635,7 @@ def format_amazon_message(product):
     message_lines.append(f"💥 Por apenas: {product['valor_desconto']}")
     message_lines.append("")
 
-    message_lines.append("🛒 Garanta agora:")
-    message_lines.append(f"🔗 {product['link']}")
+    message_lines.append(f"👉 Clique aqui e garanta: {product['link']}")
     message = "\n".join(message_lines)
     message = re.sub(r'\n{3,}', '\n\n', message).strip()
     return message

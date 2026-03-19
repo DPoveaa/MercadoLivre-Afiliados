@@ -651,8 +651,7 @@ def format_telegram_message(product):
         message += f"💥 Por apenas: R$ {pix_price:.2f} (no PIX)\n"
 
     # Link do produto (afiliado)
-    message += f"\n🛒 *Garanta agora:*\n"
-    message += f"🔗 {product['affiliate_url']}"
+    message += (f"👉 Clique aqui e garanta: {product['affiliate_url']}")
 
     return message
 
@@ -705,6 +704,9 @@ def check_promotions():
             log("Nenhum link de produto encontrado")
             return
         
+        if TEST_MODE:
+            product_links = product_links[:1]
+            log("Modo teste: processando apenas 1 link")
         log(f"Encontrados {len(product_links)} links para processar")
         
         # Processa cada produto individualmente

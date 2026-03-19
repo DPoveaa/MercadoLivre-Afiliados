@@ -529,7 +529,7 @@ def get_product_details(driver, url, max_retries=3):
             if coupon_message:
                 parts.append(coupon_message)
 
-            parts.append(f"🛒 *Garanta agora:*\n🔗 {affiliate_link}")
+            parts.append(f"👉 *Clique aqui e garanta:* {affiliate_link}")
 
             return product_title, "\n\n".join(parts), image_url
 
@@ -557,6 +557,9 @@ def check_promotions():
         if not product_urls:
             log("Nenhuma oferta encontrada")
             return
+        if TEST_MODE:
+            product_urls = product_urls[:1]
+            log("Modo teste: processando apenas 1 link")
 
         # Coleta nomes já enviados
         sent_names = set(sent_promotions)
