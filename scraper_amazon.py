@@ -68,18 +68,6 @@ AMAZON_AFFILIATE_TAG = os.getenv("AMAZON_AFFILIATE_TAG", "4002892203d-20").strip
 
 products_per_category = int(os.getenv("TOP_N_OFFERS_TESTE"))if TEST_MODE else int(os.getenv("TOP_N_OFFERS_AMAZON"))
 
-# Load cookies from environment variable (optional)
-COOKIES_JSON = os.getenv('AMAZON_COOKIES')
-COOKIES = []
-if COOKIES_JSON:
-    try:
-        COOKIES = json.loads(COOKIES_JSON)
-    except json.JSONDecodeError as e:
-        print(f"AMAZON_COOKIES invÃ¡lido, continuando sem cookies: {e}")
-        COOKIES = []
-else:
-    print("AMAZON_COOKIES nÃ£o definido, continuando sem cookies.")
-
 FORCE_RUN_ON_START = os.getenv("FORCE_RUN_ON_START", "false").lower() == "true"
 
 # Configurações gerais
@@ -925,30 +913,6 @@ def amazon_scraper(driver):
     """Scraper principal que coleta ofertas de todas as categorias"""
     try:
         driver.get("https://www.amazon.com.br")
-        driver.delete_all_cookies()  # Limpar cookies existentes
-
-        for cookie in COOKIES:
-            try:
-                # Converte valores booleanos de string para bool
-                secure = cookie.get('secure', False)
-                if isinstance(secure, str):
-                    secure = secure.lower() == 'true'
-
-                http_only = cookie.get('httpOnly', False)
-                if isinstance(http_only, str):
-                    http_only = http_only.lower() == 'true'
-
-                driver.add_cookie({
-                    'name': cookie['name'],
-                    'value': cookie['value'],
-                    'domain': cookie['domain'],
-                    'path': cookie['path'],
-                    'secure': secure,
-                    'httpOnly': http_only
-                })
-            except Exception as e:
-                print(f"Erro ao adicionar cookie {cookie.get('name')}: {str(e)}")
-
         all_deals = []
         deals_by_category = {}
         

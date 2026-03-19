@@ -424,7 +424,7 @@ def extract_product_details(driver, product_url):
         discount_price = None
         # Caso queira buscar preço à vista no cartão, adicionar lógica aqui se houver elemento específico
 
-ções
+        # Avaliações
         rating = None
         rating_count = None
         rating_selectors = [
@@ -613,7 +613,7 @@ def format_telegram_message(product):
     elif not product['rating'] and not product['rating_count']:
         message += f"⭐ (sem avaliações)\n\n"
 
-    # Se não houver preço antigo, usa o preço do cartão como antigo
+    # Precos
     old_price = product.get('old_price')
     discount_price = product.get('discount_price')
     pix_price = product.get('pix_price')
@@ -638,7 +638,7 @@ def format_telegram_message(product):
     if desconto_total:
         message += f"📉 Desconto de até {desconto_total}% OFF\n\n"
 
-    # Preço antigo (sempre mostra)
+    # Precos
     if old_price:
         message += f"💸 De: R$ {old_price:.2f}\n\n"
     # Preço no cartão
@@ -650,7 +650,7 @@ def format_telegram_message(product):
     elif pix_price:
         message += f"💥 Por apenas: R$ {pix_price:.2f} (no PIX)\n"
 
- (afiliado)
+    # Link do produto (afiliado)
     message += f"\n🛒 *Garanta agora:*\n"
     message += f"🔗 {product['affiliate_url']}"
 
