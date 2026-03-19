@@ -131,6 +131,44 @@ def log(message):
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] {message}")
 
+
+def _escape_md(text):
+    if text is None:
+        return ""
+    return (
+        text.replace("\\", "\\\\")
+            .replace("_", "\\_")
+            .replace("*", "\\*")
+            .replace("[", "\\[")
+            .replace("]", "\\]")
+            .replace("(", "\\(")
+            .replace(")", "\\)")
+            .replace("`", "\\`")
+            .replace(">", "\\>")
+    )
+
+
+def _notify_admin_missing_data(product_url, missing_fields, product_name=None):
+    if not TELEGRAM_BOT_TOKEN or not ADMIN_CHAT_IDS:
+        return
+    missing_text = ", ".join(missing_fields)
+    name_line = f"Produto: {_escape_md(product_name)}\n" if product_name else ""
+    message = (
+        "Kabum - produto ignorado por falta de dados\n"
+        f"{name_line}"
+        f"Faltando: {_escape_md(missing_text)}\n"
+        f"Link: {_escape_md(product_url)}"
+    )
+    for admin_id in ADMIN_CHAT_IDS:
+        try:
+            send_telegram_message(
+                message=message,
+                image_url=None,
+                bot_token=TELEGRAM_BOT_TOKEN,
+                chat_id=admin_id
+            )
+        except Exception:
+            pass
 def init_driver():
     """Inicializa o driver do Chrome com configurações stealth"""
     log("Inicializando navegador com undetected-chromedriver...")
@@ -705,8 +743,6 @@ def check_promotions():
             return
         
         if TEST_MODE:
-            product_links = product_links[:1]
-            log("Modo teste: processando apenas 1 link")
         log(f"Encontrados {len(product_links)} links para processar")
         
         # Processa cada produto individualmente
@@ -764,6 +800,7 @@ def check_promotions():
             if not product.get('affiliate_url'):
                 dados_faltando.append('link')
             if dados_faltando:
+                _notify_admin_missing_data(product_url, dados_faltando, product.get('name'))
                 log(f"Produto ignorado por falta de dados obrigatórios: {', '.join(dados_faltando)} - {product.get('name', 'Nome não encontrado')}")
                 continue
             
@@ -810,6 +847,9 @@ def check_promotions():
                     log("Mensagem enviada com sucesso")
                     # Adiciona ao histórico
                     sent_promotions.append(product['name'])
+                    if TEST_MODE:
+                        log('Modo teste: 1 produto enviado, encerrando.')
+                        break
                     
                     # Mantém apenas os últimos MAX_HISTORY_SIZE
                     if len(sent_promotions) > MAX_HISTORY_SIZE:

@@ -35,6 +35,44 @@ def log(message):
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] {message}")
 
+
+def _escape_md(text):
+    if text is None:
+        return ""
+    return (
+        text.replace("\\", "\\\\")
+            .replace("_", "\\_")
+            .replace("*", "\\*")
+            .replace("[", "\\[")
+            .replace("]", "\\]")
+            .replace("(", "\\(")
+            .replace(")", "\\)")
+            .replace("`", "\\`")
+            .replace(">", "\\>")
+    )
+
+
+def _notify_admin_missing_data(product_url, missing_fields, product_title=None):
+    if not TELEGRAM_BOT_TOKEN or not ADMIN_CHAT_IDS:
+        return
+    missing_text = ", ".join(missing_fields)
+    title_line = f"Produto: {_escape_md(product_title)}\n" if product_title else ""
+    message = (
+        "Mercado Livre - produto ignorado por falta de dados\n"
+        f"{title_line}"
+        f"Faltando: {_escape_md(missing_text)}\n"
+        f"Link: {_escape_md(product_url)}"
+    )
+    for admin_id in ADMIN_CHAT_IDS:
+        try:
+            send_telegram_message(
+                message=message,
+                image_url=None,
+                bot_token=TELEGRAM_BOT_TOKEN,
+                chat_id=admin_id
+            )
+        except Exception:
+            pass
 # PM2/cwd differences can break local imports. Ensure project root is on sys.path.
 _PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 if _PROJECT_DIR not in sys.path:
@@ -383,7 +421,7 @@ def get_product_details(driver, url, max_retries=3):
                     continue
                 else:
                     log("Número máximo de tentativas atingido. Pulando produto.")
-                    return None, None, None
+                    return None, None, None, ["link"]
 
             # Título do produto
             try:
@@ -508,6 +546,19 @@ def get_product_details(driver, url, max_retries=3):
                 log(f"Erro ao extrair imagem: {e}")
                 image_url = None
 
+            # ValidaÃ§Ã£o de campos obrigatÃ³rios
+            missing_fields = []
+            if not product_title:
+                missing_fields.append("nome")
+            if not affiliate_link:
+                missing_fields.append("link")
+            if not original_price:
+                missing_fields.append("de")
+            if (not current_price) or ("nÃ£o encontrado" in str(current_price).lower()):
+                missing_fields.append("por_apenas")
+            if missing_fields:
+                return product_title, None, image_url, missing_fields
+
 
             parts = [f"🟡 *Mercado Livre*", f"🏷️ *{product_title[:150]}*"]
             if promotion_type:
@@ -531,14 +582,14 @@ def get_product_details(driver, url, max_retries=3):
 
             parts.append(f"👉 *Clique aqui e garanta:* {affiliate_link}")
 
-            return product_title, "\n\n".join(parts), image_url
+            return product_title, "\n\n".join(parts), image_url, []
 
         except Exception as e:
             log(f"Erro inesperado ao extrair detalhes (tentativa {attempt}/{max_retries}): {e}")
             time.sleep(random.uniform(2, 4))
 
     log(f"Falha definitiva ao extrair dados do produto após {max_retries} tentativas: {url}")
-    return None, None, None
+    return None, None, None, ["erro_extracao"]
 
 def check_promotions():
     log("Iniciando verificação de promoções...")
@@ -567,7 +618,10 @@ def check_promotions():
         for url in product_urls:
             log(f"Processando promoção: {url}")
             try:
-                product_title, message, image_url = get_product_details(driver, url)
+                product_title, message, image_url, missing_fields = get_product_details(driver, url)
+                if missing_fields:
+                    _notify_admin_missing_data(url, missing_fields, product_title)
+                    continue
                 if not message:
                     continue
 

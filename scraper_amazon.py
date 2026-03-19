@@ -292,43 +292,65 @@ def is_product_already_sent(product_name, sent_products):
             return True
     return False
 
-def validate_product_data(product):
-    """Valida se o produto tem todos os campos obrigatórios para envio."""
+def get_missing_fields(product):
+    """Retorna lista de campos obrigatorios ausentes/invalidos."""
     required_fields = {
-        'nome': 'Nome do produto',
-        'valor_desconto': 'Valor com desconto',
-        'link': 'Link do produto'
+        'nome': 'nome',
+        'valor_desconto': 'por_apenas',
+        'link': 'link'
     }
-    
+
     missing_fields = []
-    
-    # Verifica campos obrigatórios
+
     for field, description in required_fields.items():
         if not product.get(field) or str(product.get(field)).strip() == '':
             missing_fields.append(description)
-    
-    # Validações específicas
+
     if product.get('nome') and len(product.get('nome').strip()) < 3:
-        missing_fields.append('Nome muito curto')
-    
+        missing_fields.append('nome_curto')
+
     if product.get('valor_desconto') and not re.search(r'R\$\s*\d+', product.get('valor_desconto')):
-        missing_fields.append('Valor com desconto inválido')
-    
+        missing_fields.append('por_apenas_invalido')
+
     if product.get('link') and not product.get('link').startswith(('http://', 'https://')):
-        missing_fields.append('Link inválido')
-    
-    # Verifica se tem imagem válida
+        missing_fields.append('link_invalido')
+
     if not product.get('imagem') or not is_valid_image_url(product.get('imagem')):
-        missing_fields.append('Imagem válida')
-    
+        missing_fields.append('imagem')
+
+    return missing_fields
+
+
+def _notify_admin_missing_data(product_link, missing_fields, product_name=None):
+    if not TELEGRAM_BOT_TOKEN or not ADMIN_CHAT_IDS:
+        return
+    missing_text = ', '.join(missing_fields)
+    name_line = f"Produto: {product_name}\n" if product_name else ''
+    message = (
+        "Amazon - produto ignorado por falta de dados\n"
+        f"{name_line}"
+        f"Faltando: {missing_text}\n"
+        f"Link: {product_link}"
+    )
+    for admin_id in ADMIN_CHAT_IDS:
+        try:
+            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+            payload = {'chat_id': admin_id, 'text': message}
+            requests.post(url, data=payload, timeout=10)
+        except Exception:
+            pass
+
+
+def validate_product_data(product):
+    """Valida se o produto tem todos os campos obrigatorios para envio."""
+    missing_fields = get_missing_fields(product)
     if missing_fields:
-        print(f"❌ Produto rejeitado - Campos obrigatórios ausentes: {', '.join(missing_fields)}")
+        print(f"Produto rejeitado - Campos obrigatorios ausentes: {', '.join(missing_fields)}")
         print(f"   Produto: {product.get('nome', 'Sem nome')[:50]}...")
         return False
-    
-    print(f"✅ Produto validado com sucesso: {product.get('nome', 'Sem nome')[:50]}...")
-    return True
 
+    print(f"Produto validado com sucesso: {product.get('nome', 'Sem nome')[:50]}...")
+    return True
 def get_deals_with_discounts(driver, category_name):
     """Coleta descontos e links dos produtos de uma categoria específica."""
     log(f"Coletando ofertas da categoria: {category_name}")
@@ -531,6 +553,8 @@ def send_telegram_message(products, driver, sent_products):
         try:
             # Validação rigorosa de todos os campos obrigatórios
             if not validate_product_data(product):
+                missing_fields = get_missing_fields(product)
+                _notify_admin_missing_data(product.get('link'), missing_fields, product.get('nome'))
                 print(f"❌ Produto rejeitado por validação: {product.get('nome', 'Sem nome')[:50]}...")
                 continue
 
@@ -1067,6 +1091,8 @@ def run_scraper():
             
             # Validação rigorosa antes de processar
             if not validate_product_data(produto):
+                missing_fields = get_missing_fields(produto)
+                _notify_admin_missing_data(produto.get('link'), missing_fields, produto.get('nome'))
                 print(f"❌ Produto rejeitado por validação: {produto.get('nome', 'Sem nome')[:50]}...")
                 produtos_nao_enviados.append(produto.get('nome', 'Sem nome'))
                 continue
